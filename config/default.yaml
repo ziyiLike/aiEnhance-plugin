@@ -54,6 +54,8 @@ knowledge:
   maxBytesPerImage: 10485760
   imageTimeoutMs: 15000
   guideTimeoutMs: 45000
+  # 攻略图较密，视觉模型通常比普通对话耗时更长。
+  modelTimeoutMs: 60000
   # 攻略图文字较密，默认使用 high；兼容接口不接受 detail 时可改为 auto。
   detail: high
   temperature: 0.1

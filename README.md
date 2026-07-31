@@ -276,6 +276,7 @@ knowledge:
   maxBytesPerImage: 10485760
   imageTimeoutMs: 15000
   guideTimeoutMs: 45000
+  modelTimeoutMs: 60000
 
   # 攻略文字通常较密；兼容接口不接受 detail 时改为 auto。
   detail: high
@@ -290,7 +291,13 @@ knowledge:
 3. 只读取 Yunzai 工作目录内的攻略图片并发送给视觉模型；
 4. 达到 `minConfidence` 时发送文字答案和“查看完整攻略”按钮；
 5. 无法回答时尝试已配置的联网搜索；
-6. 搜索未开启或仍无可靠答案时，发送之前截获的完整攻略回复。
+6. 搜索未开启或仍无可靠答案时，只发送一张尺寸合适的攻略图和“查看完整
+   攻略”按钮，避免 QQBot 将多作者转发拆成大量被动回复。
+
+视觉问答会优先选择尺寸正常的攻略图；如果只有超长图，则仅选择处理成本最低的
+一张交给模型尝试。超长图不会直接回发 QQ，防止客户端显示破图，此时仍会提供
+“查看完整攻略”按钮。攻略视觉请求单独使用 `modelTimeoutMs`，不再受普通对话
+较短的 `api.timeoutMs` 限制。
 
 后台获取攻略仍会尊重 `routing.autoExecuteEnabled` 和
 `commands.autoExecuteAllowlist`。如果管理员关闭自动执行或移除了对应攻略

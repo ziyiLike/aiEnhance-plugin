@@ -15,6 +15,16 @@ function buildButton(segment, command, label) {
   }
 }
 
+function buildImage(segment, image) {
+  if (!image?.dataUrl) return null
+  try {
+    if (typeof segment?.image === "function") {
+      return segment.image(image.dataUrl)
+    }
+  } catch {}
+  return { type: "image", file: image.dataUrl }
+}
+
 export async function sendText(event, text, config) {
   if (!event?.reply || !text) return false
   return event.reply(String(text), Boolean(config.quote))
@@ -85,31 +95,30 @@ export async function sendClarification(
 
 export async function sendKnowledgeAnswer(
   event,
-  { text, command, label = "查看完整攻略", segment, config },
+  {
+    text,
+    command,
+    label = "查看完整攻略",
+    image,
+    segment,
+    config,
+  },
 ) {
-  if (!command || !canUseButtons(segment, config)) {
-    return sendText(event, text, config)
-  }
+  if (!event?.reply || !text) return false
 
-  const button = buildButton(segment, command, label.slice(0, 32))
-  if (!button) return sendText(event, text, config)
-  return event.reply([String(text), button], Boolean(config.quote))
+  const button =
+    command && canUseButtons(segment, config)
+      ? buildButton(segment, command, label.slice(0, 32))
+      : null
+  const outputText =
+    command && !button ? `${String(text)}\n命令：${command}` : String(text)
+  const message = [outputText]
+  const imageSegment = buildImage(segment, image)
+  if (imageSegment) message.push(imageSegment)
+  if (button) message.push(button)
+
+  if (message.length === 1) return sendText(event, outputText, config)
+  return event.reply(message, Boolean(config.quote))
 }
 
-export async function sendCapturedReplies(event, replies, config) {
-  if (!event?.reply || !Array.isArray(replies) || !replies.length) return false
-
-  let sent = false
-  for (let index = 0; index < replies.length; index++) {
-    const reply = replies[index]
-    if (reply?.message === undefined || reply?.message === null) continue
-    await event.reply(
-      reply.message,
-      index === 0 ? Boolean(config.quote) : Boolean(reply.quote),
-    )
-    sent = true
-  }
-  return sent
-}
-
-export { canUseButtons, buildButton }
+export { canUseButtons, buildButton, buildImage }

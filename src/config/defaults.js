@@ -40,6 +40,7 @@ export const DEFAULT_CONFIG = {
     maxBytesPerImage: 10_485_760,
     imageTimeoutMs: 15_000,
     guideTimeoutMs: 45_000,
+    modelTimeoutMs: 60_000,
     detail: "high",
     temperature: 0.1,
     maxTokens: 900,

@@ -8,6 +8,22 @@ import {
   createReplayEvent,
   isReplayedEvent,
 } from "../src/runtime/SafeDispatcher.js"
+import { createLogger } from "../src/utils/logger.js"
+
+test("plugin logger adds its prefix exactly once", () => {
+  const messages = []
+  const logger = createLogger({
+    logger: { warn(message) { messages.push(message) } },
+  })
+
+  logger.warn("普通警告")
+  logger.warn("[aiEnhance-plugin] 已带前缀")
+
+  assert.deepEqual(messages, [
+    "[aiEnhance-plugin] 普通警告",
+    "[aiEnhance-plugin] 已带前缀",
+  ])
+})
 
 test("RequestGate enforces in-flight, per-window, and global limits", () => {
   let now = 1_000

@@ -43,6 +43,7 @@ test("ConfigManager creates, merges, normalizes, and validates configuration", a
   source.vision.detail = "unsupported"
   source.knowledge.minConfidence = 2
   source.knowledge.maxGuideImages = 99
+  source.knowledge.modelTimeoutMs = 999_999
   source.knowledge.detail = "unsupported"
   source.knowledge.webSearch.maxResults = 99
   source.knowledge.webSearch.extraHeaders = { "x-search-provider": "value" }
@@ -58,6 +59,7 @@ test("ConfigManager creates, merges, normalizes, and validates configuration", a
   assert.equal(loaded.vision.detail, "auto")
   assert.equal(loaded.knowledge.minConfidence, 1)
   assert.equal(loaded.knowledge.maxGuideImages, 6)
+  assert.equal(loaded.knowledge.modelTimeoutMs, 180_000)
   assert.equal(loaded.knowledge.detail, "high")
   assert.equal(loaded.knowledge.webSearch.maxResults, 10)
   assert.equal(

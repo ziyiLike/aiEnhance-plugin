@@ -127,6 +127,9 @@ function normalizeConfig(config) {
   config.knowledge.guideTimeoutMs = Math.round(
     finiteNumber(config.knowledge.guideTimeoutMs, 45_000, 1_000, 180_000),
   )
+  config.knowledge.modelTimeoutMs = Math.round(
+    finiteNumber(config.knowledge.modelTimeoutMs, 60_000, 1_000, 180_000),
+  )
   config.knowledge.detail = VISION_DETAIL_LEVELS.has(config.knowledge.detail)
     ? config.knowledge.detail
     : "high"

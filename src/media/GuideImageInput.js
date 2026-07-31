@@ -8,6 +8,7 @@ import {
   prepareSource,
   toDataUrl,
 } from "./ImageInput.js"
+import { detectImageDimensions } from "./ImageDimensions.js"
 
 const CONTAINER_KEYS = new Set([
   "content",
@@ -192,10 +193,13 @@ export class GuideImageInput {
     for (const result of results) {
       if (result.image) {
         const { bytes, mimeType } = result.image
+        const size = detectImageDimensions(bytes, mimeType)
         images.push({
           dataUrl: toDataUrl(result.image),
           mimeType,
           byteLength: bytes.length,
+          width: size?.width ?? null,
+          height: size?.height ?? null,
           hash: crypto
             .createHash("sha256")
             .update(bytes)

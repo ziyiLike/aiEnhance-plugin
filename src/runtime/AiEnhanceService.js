@@ -473,7 +473,9 @@ export class AiEnhanceService {
     if (!config.logging.decisions) return
     this.logger.info?.(
       `decision=${data.decision} actor=${identityHash(event)} ${Object.entries(data)
-        .filter(([key]) => key !== "decision")
+        .filter(
+          ([key, value]) => key !== "decision" && value !== undefined,
+        )
         .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
         .join(" ")}`.trim(),
     )

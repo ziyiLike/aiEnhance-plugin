@@ -1,7 +1,10 @@
 import { detectCharacterKnowledgeIntent } from "../knowledge/CharacterKnowledgeIntent.js"
 import { extractGuideImageSources } from "../media/GuideImageInput.js"
 import {
-  sendCapturedReplies,
+  selectGuideImagesForVision,
+  selectUsableGuideImages,
+} from "../media/ImageDimensions.js"
+import {
   sendKnowledgeAnswer,
   sendText,
 } from "../ui/reply.js"
@@ -30,6 +33,7 @@ function knowledgeApi(config) {
   return {
     ...config.api,
     model: config.knowledge.model || config.api.model,
+    timeoutMs: config.knowledge.modelTimeoutMs,
     temperature: config.knowledge.temperature,
     maxTokens: config.knowledge.maxTokens,
   }
@@ -118,17 +122,25 @@ export class CharacterKnowledgeService {
           },
         )
       : { hadImages: false, images: [], failures: [], sourceCount: 0 }
+    const fallbackImages = selectUsableGuideImages(
+      images.images,
+      knowledgeConfig.maxGuideImages,
+    )
+    const visionImages = selectGuideImagesForVision(
+      images.images,
+      knowledgeConfig.maxGuideImages,
+    )
 
     const modelApi = knowledgeApi(config)
     if (
       knowledgeConfig.guideVisionEnabled &&
       config.vision.enabled &&
-      images.images.length
+      visionImages.length
     ) {
       try {
         const answered = await this.answerer.answerFromGuide({
           intent,
-          images: images.images,
+          images: visionImages,
           api: modelApi,
           apiKey,
           detail: knowledgeConfig.detail,
@@ -201,12 +213,24 @@ export class CharacterKnowledgeService {
     }
 
     if (selectedReplies.length) {
-      await sendCapturedReplies(event, selectedReplies, config.reply)
+      const fallbackImage = fallbackImages[0]
+      const reply = fallbackImage
+        ? "暂时没能可靠提炼攻略图内容，先给你一份适合直接查看的攻略图。"
+        : "攻略图过长或暂时无法读取，请点击按钮查看完整攻略。"
+      await sendKnowledgeAnswer(event, {
+        text: reply,
+        command: intent.guide?.command,
+        label: `查看${intent.character}完整攻略`,
+        image: fallbackImage,
+        segment: this.segment,
+        config: config.reply,
+      })
       return {
         handled: true,
-        decision: images.images.length
+        decision: fallbackImage
           ? "knowledge_guide_fallback"
-          : "knowledge_guide_unreadable",
+          : "knowledge_guide_button_fallback",
+        memoryReply: reply,
         intent,
       }
     }

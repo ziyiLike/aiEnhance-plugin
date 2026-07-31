@@ -21,6 +21,34 @@ const COMMAND_ROUTE = {
   reply: "",
 }
 
+function jpegWithSize(width, height) {
+  return Buffer.from([
+    0xff,
+    0xd8,
+    0xff,
+    0xc0,
+    0x00,
+    0x11,
+    0x08,
+    (height >>> 8) & 0xff,
+    height & 0xff,
+    (width >>> 8) & 0xff,
+    width & 0xff,
+    0x03,
+    0x01,
+    0x11,
+    0x00,
+    0x02,
+    0x11,
+    0x00,
+    0x03,
+    0x11,
+    0x00,
+    0xff,
+    0xd9,
+  ])
+}
+
 async function startMockApi(route = COMMAND_ROUTE) {
   let requestBody
   const server = http.createServer(async (request, response) => {
@@ -339,7 +367,7 @@ test("full flow captures a character guide and answers a specific build question
   assert.equal(content[1].image_url.detail, "high")
 })
 
-test("unanswerable guide vision falls back to the captured guide image", async t => {
+test("guide fallback sends one safe image instead of replaying a long forward", async t => {
   const directory = await fs.mkdtemp(
     path.join(os.tmpdir(), "ai-enhance-guide-fallback-"),
   )
@@ -363,24 +391,39 @@ test("unanswerable guide vision falls back to the captured guide image", async t
     responseFormat: "json_schema",
     retries: 0,
   })
+  config.knowledge.webSearch.enabled = false
   await fs.mkdir(path.join(directory, "config"), { recursive: true })
   await fs.writeFile(
     path.join(directory, "config", "aiEnhance.yaml"),
     YAML.stringify(config),
     "utf8",
   )
-  const guidePath = path.join(directory, "plugins", "guide", "遐蝶.png")
-  await fs.mkdir(path.dirname(guidePath), { recursive: true })
-  await fs.writeFile(
-    guidePath,
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-  )
-  const guideMessage = [
-    {
-      type: "image",
-      file: pathToFileURL(guidePath).href,
-    },
-  ]
+  const longGuidePath = path.join(directory, "plugins", "guide", "long.jpg")
+  const safeGuidePath = path.join(directory, "plugins", "guide", "safe.jpg")
+  const longGuide = jpegWithSize(2_250, 18_467)
+  const safeGuide = jpegWithSize(1_080, 2_470)
+  await fs.mkdir(path.dirname(longGuidePath), { recursive: true })
+  await fs.writeFile(longGuidePath, longGuide)
+  await fs.writeFile(safeGuidePath, safeGuide)
+  const guideMessage = {
+    type: "node",
+    data: [
+      { message: "来自作者 A 的角色攻略：" },
+      {
+        message: {
+          type: "image",
+          file: pathToFileURL(longGuidePath).href,
+        },
+      },
+      { message: "来自作者 B 的角色攻略：" },
+      {
+        message: {
+          type: "image",
+          file: pathToFileURL(safeGuidePath).href,
+        },
+      },
+    ],
+  }
   const pluginLoader = {
     priority: [
       {
@@ -402,6 +445,14 @@ test("unanswerable guide vision falls back to the captured guide image", async t
     pluginRoot,
     pluginLoader,
     redis: null,
+    segment: {
+      image(file) {
+        return { type: "image", file }
+      },
+      button(...rows) {
+        return { type: "button", rows }
+      },
+    },
     baseLogger: { info() {}, warn() {}, error() {} },
   })
   const event = {
@@ -423,7 +474,24 @@ test("unanswerable guide vision falls back to the captured guide image", async t
   }
 
   assert.equal(await runtime.service.handle(event), true)
-  assert.deepEqual(replies, [guideMessage])
+  assert.equal(replies.length, 1)
+  assert.equal(Array.isArray(replies[0]), true)
+  assert.match(replies[0][0], /一份适合直接查看的攻略图/)
+  assert.deepEqual(replies[0][1], {
+    type: "image",
+    file: `data:image/jpeg;base64,${safeGuide.toString("base64")}`,
+  })
+  assert.equal(replies[0][2].rows[0][0].callback, "*遐蝶攻略")
+  assert.equal(
+    JSON.stringify(replies[0]).includes(longGuide.toString("base64")),
+    false,
+  )
+  const visionContent = api.getRequestBody().messages.at(-1).content
+  assert.equal(visionContent.filter(part => part.type === "image_url").length, 1)
+  assert.equal(
+    visionContent[1].image_url.url,
+    `data:image/jpeg;base64,${safeGuide.toString("base64")}`,
+  )
 })
 
 test("unanswerable guide vision uses the same model's native web search", async t => {
