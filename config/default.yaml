@@ -1,0 +1,116 @@
+# 复制目标：TRSS-Yunzai/config/aiEnhance.yaml
+enabled: true
+
+trigger:
+  # 私聊消息在原有插件未处理时交给 AI。
+  privateEnabled: true
+  # 群聊必须 @机器人 或使用机器人别名，避免 onlyReplyAt=0 时回复每句话。
+  requireAtInGroup: true
+  allowAliasInGroup: true
+  # 留空表示所有群；填写后只在指定群启用。
+  enabledGroups: []
+  disabledGroups: []
+
+api:
+  # 可填写 OpenAI 官方地址或任意兼容 Chat Completions 的地址。
+  baseUrl: https://api.openai.com/v1
+  endpoint: /chat/completions
+  # 推荐使用 apiKeyEnv，不要把密钥提交到 Git。
+  apiKey: ""
+  apiKeyEnv: OPENAI_API_KEY
+  allowUnauthenticated: false
+  allowInsecureHttp: false
+  model: ""
+  timeoutMs: 20000
+  retries: 1
+  temperature: 0.2
+  maxTokens: 900
+  # 兼容服务通常使用 max_tokens；部分新模型要求 max_completion_tokens。
+  maxTokensField: max_tokens
+  # auto 会依次尝试 json_schema、json_object、纯提示词 JSON。
+  responseFormat: auto
+  extraHeaders: {}
+
+routing:
+  topK: 12
+  maxInputChars: 2000
+  autoExecuteEnabled: true
+  autoExecuteConfidence: 0.92
+  confirmConfidence: 0.65
+  minAutoRetrievalScore: 0.18
+  minAutoRetrievalMargin: 0.06
+
+commands:
+  enabledPresets:
+    - miao
+    - waves
+    - xiaoyao
+  disabledIds: []
+  # 只有同时出现在这里、且候选本身标记为只读安全，才允许自动执行。
+  autoExecuteAllowlist:
+    - miao.help
+    - miao.genshin_calendar
+    - miao.starrail_calendar
+    - miao.zzz_calendar
+    - miao.today_material
+    - miao.profile_list
+    - miao.profile_detail
+    - miao.profile_stats
+    - miao.gacha_summary
+    - miao.character_ownership
+    - miao.abyss_usage
+    - miao.abyss_teams
+    - miao.abyss_data
+    - miao.theater_data
+    - miao.stygian_data
+    - waves.help
+    - waves.login_help
+    - waves.sanity
+    - waves.card
+    - waves.explore
+    - waves.challenge
+    - waves.tower
+    - waves.profile
+    - waves.guide
+    - waves.atlas
+    - waves.calendar
+    - waves.news
+    - waves.gacha_records
+    - waves.data_bank
+    - waves.training
+    - waves.sign_records
+    - waves.redemption_codes
+    - waves.resource_report
+    - waves.character_ownership
+    - xiaoyao.help
+    - xiaoyao.version
+    - xiaoyao.stamina
+    - xiaoyao.atlas
+    - xiaoyao.map_location
+    - xiaoyao.account_help
+  # 自定义项只支持固定命令；有参数的命令请通过代码添加受限模板。
+  custom: []
+
+memory:
+  enabled: true
+  ttlSeconds: 900
+  maxMessages: 8
+  maxMessageChars: 1000
+
+limits:
+  perUserRequests: 6
+  perUserWindowSeconds: 60
+  globalConcurrency: 3
+
+reply:
+  quote: true
+  useButtons: true
+  emptyPrompt: 你可以直接和我聊天，也可以告诉我想查询什么。
+  notConfigured: AI 服务尚未配置，请主人设置 config/aiEnhance.yaml。
+  apiError: AI 服务暂时不可用，请稍后再试。
+  tooLong: 消息太长了，请精简后再试。
+  busy: 当前请求较多，请稍后再试。
+  sensitive: 检测到消息可能包含 Token、Cookie 或密钥。为保护账号安全，这条消息不会发送给 AI，请在私聊中使用准确的原插件命令。
+
+logging:
+  decisions: true
