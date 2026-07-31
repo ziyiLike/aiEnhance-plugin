@@ -1,3 +1,8 @@
+import {
+  characterRegistry,
+  resolveWhitelistedCharacter,
+} from "./CharacterRegistry.js"
+
 const SAFE_ENTITY_PATTERN = /^[A-Za-z0-9\u3400-\u9fff·・_\-\s]{1,24}$/
 const FORBIDDEN_ENTITY_WORDS =
   /(删除|清除|移除|更新|重载|设置|上传|添加|开启|关闭|登录|绑定|解绑|强制|重启|token|cookie|stoken|api.?key)/i
@@ -21,6 +26,16 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+function gamesFromContext(context, supportedGames) {
+  const hinted =
+    context?.explicitGames?.length === 1
+      ? context.explicitGames[0]
+      : context?.inferredGames?.length === 1
+        ? context.inferredGames[0]
+        : ""
+  return hinted && supportedGames.includes(hinted) ? [hinted] : supportedGames
+}
+
 function fixedCommand({
   id,
   plugin,
@@ -32,6 +47,7 @@ function fixedCommand({
   autoExecute = risk === "read",
   runtimeAliases,
   runtimeRuleOptional = false,
+  games,
 }) {
   return {
     id,
@@ -43,6 +59,7 @@ function fixedCommand({
     autoExecute,
     runtimeAliases,
     runtimeRuleOptional,
+    games,
     slots: [],
     commandExamples: [command],
     build: () => command,
@@ -68,6 +85,7 @@ const miao = [
     intentExamples: ["看看原神日历", "原神最近有什么活动", "原神活动时间"],
     keywords: ["原神", "日历", "活动", "卡池"],
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin"],
   }),
   fixedCommand({
     id: "miao.starrail_calendar",
@@ -77,6 +95,7 @@ const miao = [
     intentExamples: ["看看星铁日历", "星穹铁道最近有什么活动", "铁道活动时间"],
     keywords: ["星铁", "星穹铁道", "铁道", "日历", "活动", "卡池"],
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["starrail"],
   }),
   fixedCommand({
     id: "miao.zzz_calendar",
@@ -86,6 +105,7 @@ const miao = [
     intentExamples: ["看看绝区零日历", "绝区零最近有什么活动"],
     keywords: ["绝区零", "绝区", "日历", "活动", "卡池"],
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["zzz"],
   }),
   {
     id: "miao.today_material",
@@ -96,6 +116,7 @@ const miao = [
     risk: "read",
     autoExecute: true,
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin"],
     slots: [
       {
         name: "day",
@@ -142,6 +163,7 @@ const miao = [
     risk: "read",
     autoExecute: true,
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin", "starrail"],
     slots: [
       {
         name: "game",
@@ -180,10 +202,13 @@ const miao = [
       "雷电将军",
       "黄泉",
       "流萤",
+      "遐蝶",
     ],
     risk: "read",
     autoExecute: true,
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin", "starrail"],
+    characterSlot: "character",
     slots: [
       {
         name: "character",
@@ -197,15 +222,20 @@ const miao = [
         allowedValues: ["面板", "详情", "圣遗物", "遗器", "武器", "伤害"],
       },
     ],
-    commandExamples: ["#胡桃面板", "#黄泉遗器", "#流萤伤害"],
-    build: slots => {
-      const character = cleanEntity(slots.character)
+    commandExamples: ["#胡桃面板", "#星铁黄泉遗器", "#星铁遐蝶面板"],
+    build: (slots, { context } = {}) => {
+      const character = resolveWhitelistedCharacter(
+        slots.character,
+        gamesFromContext(context, ["genshin", "starrail"]),
+      )
       const view = slots.view
         ? cleanEnum(slots.view, ["面板", "详情", "圣遗物", "遗器", "武器", "伤害"])
         : "面板"
-      return `#${character}${view}`
+      const gamePrefix = character.game === "starrail" ? "星铁" : ""
+      return `#${gamePrefix}${character.character}${view}`
     },
-    validateCommand: /^#[^#\n]{1,24}(面板|详情|圣遗物|遗器|武器|伤害)$/,
+    validateCommand:
+      /^#(星铁)?[^#\n]{1,24}(面板|详情|圣遗物|遗器|武器|伤害)$/,
   },
   {
     id: "miao.profile_stats",
@@ -216,6 +246,7 @@ const miao = [
     risk: "read",
     autoExecute: true,
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin", "starrail"],
     slots: [
       {
         name: "game",
@@ -244,6 +275,7 @@ const miao = [
     risk: "read",
     autoExecute: true,
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin", "starrail"],
     slots: [
       {
         name: "game",
@@ -274,6 +306,7 @@ const miao = [
     intentExamples: ["看看原神角色持有率", "大家都有哪些角色", "角色持有分布"],
     keywords: ["原神", "角色", "持有率", "持有", "命座", "分布", "统计"],
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin"],
   }),
   fixedCommand({
     id: "miao.abyss_usage",
@@ -283,6 +316,7 @@ const miao = [
     intentExamples: ["看看本期深渊出场率", "深渊哪些角色用得多"],
     keywords: ["原神", "深渊", "角色", "出场率", "使用率", "统计"],
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin"],
   }),
   fixedCommand({
     id: "miao.abyss_teams",
@@ -292,6 +326,7 @@ const miao = [
     intentExamples: ["深渊怎么配队", "看看本期深渊队伍", "深渊组队推荐"],
     keywords: ["原神", "深渊", "配队", "组队", "队伍", "推荐"],
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin"],
   }),
   fixedCommand({
     id: "miao.abyss_data",
@@ -301,6 +336,7 @@ const miao = [
     intentExamples: ["看看本期深渊数据", "深境螺旋统计"],
     keywords: ["原神", "深渊", "深境螺旋", "数据", "统计", "本期"],
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin"],
   }),
   fixedCommand({
     id: "miao.theater_data",
@@ -310,6 +346,7 @@ const miao = [
     intentExamples: ["看看幻想真境剧诗数据", "剧诗本期统计"],
     keywords: ["原神", "幻想真境剧诗", "剧诗", "幻想", "数据", "统计"],
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin"],
   }),
   fixedCommand({
     id: "miao.stygian_data",
@@ -319,6 +356,7 @@ const miao = [
     intentExamples: ["看看幽境危战数据", "危战本期统计"],
     keywords: ["原神", "幽境危战", "幽境", "危战", "数据", "统计"],
     runtimeAliases: ["miao-plugin", "喵喵"],
+    games: ["genshin"],
   }),
 ]
 
@@ -395,6 +433,8 @@ const waves = [
     risk: "read",
     autoExecute: true,
     runtimeAliases: ["waves-plugin", "鸣潮-"],
+    games: ["waves"],
+    characterSlot: "character",
     slots: [
       {
         name: "character",
@@ -403,7 +443,10 @@ const waves = [
       },
     ],
     commandExamples: ["~今汐面板", "~安可面板"],
-    build: slots => `~${cleanEntity(slots.character)}面板`,
+    build: slots => {
+      const character = resolveWhitelistedCharacter(slots.character, ["waves"])
+      return `~${character.character}面板`
+    },
     validateCommand: /^~[^~#\n]{1,24}面板$/,
   },
   {
@@ -415,6 +458,8 @@ const waves = [
     risk: "read",
     autoExecute: true,
     runtimeAliases: ["waves-plugin", "鸣潮-"],
+    games: ["waves"],
+    characterSlot: "character",
     slots: [
       {
         name: "character",
@@ -423,7 +468,10 @@ const waves = [
       },
     ],
     commandExamples: ["~今汐攻略", "~安可攻略"],
-    build: slots => `~${cleanEntity(slots.character)}攻略`,
+    build: slots => {
+      const character = resolveWhitelistedCharacter(slots.character, ["waves"])
+      return `~${character.character}攻略`
+    },
     validateCommand: /^~[^~#\n]{1,24}攻略$/,
   },
   {
@@ -435,6 +483,8 @@ const waves = [
     risk: "read",
     autoExecute: true,
     runtimeAliases: ["waves-plugin", "鸣潮-"],
+    games: ["waves"],
+    characterTopicSlot: "topic",
     slots: [
       {
         name: "topic",
@@ -551,6 +601,10 @@ const waves = [
   }),
 ]
 
+// waves-plugin 的全部预设只服务于鸣潮。统一标注后，角色白名单和显式游戏名
+// 都能在进入模型前排除跨游戏候选。
+for (const candidate of waves) candidate.games ??= ["waves"]
+
 const xiaoyao = [
   fixedCommand({
     id: "xiaoyao.help",
@@ -581,6 +635,7 @@ const xiaoyao = [
     keywords: ["原神", "体力", "树脂", "便笺", "便签"],
     runtimeAliases: ["xiaoyao-cvs-plugin", "图鉴插件"],
     runtimeRuleOptional: true,
+    games: ["genshin"],
   }),
   {
     id: "xiaoyao.atlas",
@@ -604,6 +659,8 @@ const xiaoyao = [
     autoExecute: true,
     runtimeAliases: ["xiaoyao-cvs-plugin", "图鉴插件"],
     runtimeRuleOptional: true,
+    games: ["genshin", "starrail"],
+    characterTopicSlot: "topic",
     slots: [
       {
         name: "topic",
@@ -612,7 +669,16 @@ const xiaoyao = [
       },
     ],
     commandExamples: ["#胡桃图鉴", "#护摩之杖图鉴", "#无相之雷图鉴"],
-    build: slots => `#${cleanEntity(slots.topic)}图鉴`,
+    build: (slots, { context } = {}) => {
+      const character = characterRegistry.resolve(slots.topic, {
+        games: gamesFromContext(context, ["genshin", "starrail"]),
+      })
+      if (character.ok) {
+        const gamePrefix = character.game === "starrail" ? "星铁" : ""
+        return `#${gamePrefix}${character.character}图鉴`
+      }
+      return `#${cleanEntity(slots.topic)}图鉴`
+    },
     validateCommand: /^#[^#~\n]{1,24}图鉴$/,
   },
   {
@@ -625,6 +691,7 @@ const xiaoyao = [
     autoExecute: true,
     runtimeAliases: ["xiaoyao-cvs-plugin", "图鉴插件"],
     runtimeRuleOptional: true,
+    games: ["genshin"],
     slots: [
       {
         name: "topic",
@@ -645,6 +712,25 @@ const xiaoyao = [
     keywords: ["原神", "米游社", "账号", "绑定", "签到", "教程", "帮助"],
     runtimeAliases: ["xiaoyao-cvs-plugin", "图鉴插件"],
     runtimeRuleOptional: true,
+    games: ["genshin"],
+  }),
+  fixedCommand({
+    id: "xiaoyao.qr_login",
+    plugin: "xiaoyao",
+    description: "发起原神米游社扫码登录或扫码绑定",
+    command: "#扫码登录",
+    intentExamples: [
+      "我要扫码登录",
+      "执行原神扫码登录",
+      "给我原神登录二维码",
+      "用二维码绑定米游社",
+    ],
+    keywords: ["原神", "米游社", "扫码", "二维码", "登录", "登陆", "绑定"],
+    risk: "write",
+    autoExecute: false,
+    runtimeAliases: ["xiaoyao-cvs-plugin", "图鉴插件"],
+    runtimeRuleOptional: true,
+    games: ["genshin"],
   }),
 ]
 
@@ -689,4 +775,4 @@ export function createCustomCandidate(input) {
   })
 }
 
-export { cleanEntity, cleanEnum, fixedCommand }
+export { cleanEntity, cleanEnum, escapeRegExp, gamesFromContext, fixedCommand }

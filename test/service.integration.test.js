@@ -9,6 +9,7 @@ import { RequestGate } from "../src/runtime/RequestGate.js"
 import {
   AiEnhanceService,
   errorSummary,
+  extractText,
 } from "../src/runtime/AiEnhanceService.js"
 import { REPLAY_SYMBOL } from "../src/runtime/SafeDispatcher.js"
 
@@ -41,7 +42,10 @@ function event(overrides = {}) {
   }
 }
 
-function serviceFixture(routeFactory, { configMutator, segment } = {}) {
+function serviceFixture(
+  routeFactory,
+  { configMutator, segment, imageInput } = {},
+) {
   const config = cloneDefaults()
   config.api.model = "test-model"
   config.api.apiKey = "test-key"
@@ -85,6 +89,11 @@ function serviceFixture(routeFactory, { configMutator, segment } = {}) {
         name: "喵喵:角色面板",
         plugin: { rule: [{ reg: /^#[^#]+面板$/ }] },
       },
+      {
+        key: "xiaoyao-cvs-plugin/index.js",
+        name: "xiaoyao-cvs-plugin",
+        plugin: { rule: [{ reg: /.+/ }] },
+      },
     ],
   }
   const dispatcher = {
@@ -105,6 +114,7 @@ function serviceFixture(routeFactory, { configMutator, segment } = {}) {
     memory: new MemoryStore({ logger }),
     gate: new RequestGate(),
     dispatcher,
+    imageInput,
     pluginLoader,
     segment,
     logger,
@@ -124,6 +134,36 @@ test("API error summaries do not log provider-returned request text", () => {
     "OpenAIHttpError status=400 code=invalid_request",
   )
   assert.doesNotMatch(errorSummary(error), /private user text/)
+})
+
+test("text extraction never sends a temporary image URL from raw_message", () => {
+  assert.equal(
+    extractText({
+      raw_message:
+        "图中有什么<image,url=https://multimedia.nt.qq.com.cn/download?rkey=secret>",
+      message: [
+        { type: "text", text: "图中有什么" },
+        {
+          type: "image",
+          url: "https://multimedia.nt.qq.com.cn/download?rkey=secret",
+        },
+      ],
+    }),
+    "图中有什么",
+  )
+  assert.equal(
+    extractText({
+      raw_message:
+        "<image,url=https://multimedia.nt.qq.com.cn/download?rkey=secret>",
+      message: [
+        {
+          type: "image",
+          url: "https://multimedia.nt.qq.com.cn/download?rkey=secret",
+        },
+      ],
+    }),
+    "",
+  )
 })
 
 test("high-confidence safe intent is generated locally and dispatched once", async () => {
@@ -260,6 +300,170 @@ test("normal chat is replied to and not dispatched", async () => {
   assert.equal(await fixture.service.handle(currentEvent), true)
   assert.equal(fixture.calls.dispatch, 0)
   assert.match(String(currentEvent.replies[0]), /你好/)
+})
+
+test("QQ image segments are prepared and forwarded to the router", async () => {
+  const preparedImage = {
+    dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    mimeType: "image/png",
+    byteLength: 8,
+  }
+  let routeInput
+  const fixture = serviceFixture(
+    async input => {
+      routeInput = input
+      return {
+        ok: true,
+        route: {
+          mode: "chat",
+          candidateId: null,
+          slots: [],
+          confidence: 0.99,
+          alternatives: [],
+          reply: "图中是一只猫。",
+        },
+        responseMeta: { model: "vision-model" },
+      }
+    },
+    {
+      imageInput: {
+        async prepare() {
+          return {
+            hadImages: true,
+            images: [preparedImage],
+            failures: [],
+          }
+        },
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "图中有什么内容",
+    raw_message: "图中有什么内容<image>",
+    message: [
+      { type: "at", qq: "bot" },
+      { type: "text", text: "图中有什么内容" },
+      {
+        type: "image",
+        url: "https://multimedia.nt.qq.com.cn/download?token=redacted",
+        size: 37_690,
+      },
+    ],
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.deepEqual(routeInput.images, [preparedImage])
+  assert.equal(routeInput.vision, fixture.config.vision)
+  assert.match(String(currentEvent.replies[0]), /一只猫/)
+})
+
+test("an image-only message reaches the model with a useful fallback prompt", async () => {
+  let routeInput
+  const fixture = serviceFixture(
+    async input => {
+      routeInput = input
+      return {
+        ok: true,
+        route: {
+          mode: "chat",
+          candidateId: null,
+          slots: [],
+          confidence: 0.99,
+          alternatives: [],
+          reply: "图片内容已识别。",
+        },
+        responseMeta: { model: "vision-model" },
+      }
+    },
+    {
+      imageInput: {
+        async prepare() {
+          return {
+            hadImages: true,
+            images: [
+              {
+                dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+                mimeType: "image/png",
+                byteLength: 8,
+              },
+            ],
+            failures: [],
+          }
+        },
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "",
+    raw_message: "<image>",
+    message: [{ type: "image", url: "https://example.com/image.png" }],
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.equal(routeInput.text, "请描述用户发送的图片内容。")
+  assert.deepEqual(routeInput.candidates, [])
+})
+
+test("an unreadable image fails locally instead of asking the model to guess", async () => {
+  const fixture = serviceFixture(
+    async () => {
+      throw new Error("router should not run")
+    },
+    {
+      imageInput: {
+        async prepare() {
+          return {
+            hadImages: true,
+            images: [],
+            failures: [{ code: "download_failed" }],
+          }
+        },
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "图中有什么",
+    message: [{ type: "image", url: "https://example.com/image.png" }],
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.equal(fixture.calls.router, 0)
+  assert.match(String(currentEvent.replies[0]), /图片读取失败/)
+})
+
+test("vision compatibility errors produce an actionable model hint", async () => {
+  const error = new Error("provider echoed the request")
+  error.name = "OpenAIHttpError"
+  error.status = 400
+  const fixture = serviceFixture(
+    async () => {
+      throw error
+    },
+    {
+      imageInput: {
+        async prepare() {
+          return {
+            hadImages: true,
+            images: [
+              {
+                dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+                mimeType: "image/png",
+                byteLength: 8,
+              },
+            ],
+            failures: [],
+          }
+        },
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "图中有什么",
+    message: [{ type: "image", url: "https://example.com/image.png" }],
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.match(String(currentEvent.replies[0]), /不支持图片输入/)
 })
 
 test("lower confidence command asks for confirmation instead of dispatching", async () => {
@@ -417,8 +621,8 @@ test("runtime plugin absence fails before confirmation or dispatch", async () =>
 
 test("confirmation uses a QQ callback button when the adapter supports it", async () => {
   const segment = {
-    button(rows) {
-      return { type: "button", rows }
+    button(...data) {
+      return { type: "button", data }
     },
   }
   const fixture = serviceFixture(
@@ -450,8 +654,120 @@ test("confirmation uses a QQ callback button when the adapter supports it", asyn
   const reply = currentEvent.replies[0]
   assert.ok(Array.isArray(reply))
   assert.equal(reply[1].type, "button")
-  assert.equal(reply[1].rows[0][0].callback, "~签到")
-  assert.equal(reply[1].rows[0][0].permission, "user")
+  assert.equal(reply[1].data[0][0].callback, "~签到")
+  assert.equal(reply[1].data[0][0].permission, "user")
+})
+
+test("low-confidence parameterized commands include a directly clickable button", async () => {
+  const segment = {
+    button(...data) {
+      return { type: "button", data }
+    },
+  }
+  const fixture = serviceFixture(
+    async () => ({
+      ok: true,
+      route: {
+        mode: "command",
+        candidateId: "miao.profile_detail",
+        slots: [{ name: "character", value: "遐蝶" }],
+        confidence: 0.8,
+        alternatives: [],
+        reply: "",
+      },
+      responseMeta: { model: "test-model" },
+    }),
+    {
+      segment,
+      configMutator(config) {
+        config.reply.useButtons = true
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "能给我看下遐蝶的面板吗",
+    raw_message: "能给我看下遐蝶的面板吗",
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.equal(fixture.calls.dispatch, 0)
+  const reply = currentEvent.replies[0]
+  assert.equal(reply[1].data[0][0].callback, "#星铁遐蝶面板")
+})
+
+test("unsupported Star Rail guide requests offer valid panel and atlas buttons", async () => {
+  const segment = {
+    button(...data) {
+      return { type: "button", data }
+    },
+  }
+  const fixture = serviceFixture(
+    async () => ({
+      ok: true,
+      route: {
+        mode: "clarify",
+        candidateId: null,
+        slots: [],
+        confidence: 0.4,
+        alternatives: [],
+        reply: "遐蝶是星铁角色，当前预设没有星铁角色攻略命令。",
+      },
+      responseMeta: { model: "test-model" },
+    }),
+    {
+      segment,
+      configMutator(config) {
+        config.reply.useButtons = true
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "给我一份遐蝶的攻略",
+    raw_message: "给我一份遐蝶的攻略",
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  const reply = currentEvent.replies[0]
+  const commands = reply[1].data.map(row => row[0].callback)
+  assert.deepEqual(commands, ["#星铁遐蝶面板", "#星铁遐蝶图鉴"])
+})
+
+test("clear QR login intent asks for one-click confirmation", async () => {
+  const segment = {
+    button(...data) {
+      return { type: "button", data }
+    },
+  }
+  const fixture = serviceFixture(
+    async () => ({
+      ok: true,
+      route: {
+        mode: "command",
+        candidateId: "xiaoyao.qr_login",
+        slots: [],
+        confidence: 1,
+        alternatives: [],
+        reply: "",
+      },
+      responseMeta: { model: "test-model" },
+    }),
+    {
+      segment,
+      configMutator(config) {
+        config.reply.useButtons = true
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "我要执行原神扫码登录",
+    raw_message: "我要执行原神扫码登录",
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.equal(fixture.calls.dispatch, 0)
+  const reply = currentEvent.replies[0]
+  assert.match(reply[0], /修改状态/)
+  assert.equal(reply[1].data[0][0].callback, "#扫码登录")
 })
 
 test("a dispatcher failure is surfaced without retrying the command", async () => {

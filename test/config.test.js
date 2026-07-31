@@ -33,12 +33,20 @@ test("ConfigManager creates, merges, normalizes, and validates configuration", a
   source.api.apiKeyEnv = "TEST_AI_KEY"
   source.api.timeoutMs = 1
   source.api.extraHeaders = { "x-provider": "value" }
+  source.vision.maxImages = 99
+  source.vision.maxBytesPerImage = 1
+  source.vision.timeoutMs = 100
+  source.vision.detail = "unsupported"
   source.routing.autoExecuteConfidence = 2
   source.unknown = "ignored"
   await fs.writeFile(configPath, YAML.stringify(source), "utf8")
 
   const loaded = await manager.load({ force: true })
   assert.equal(loaded.api.timeoutMs, 1_000)
+  assert.equal(loaded.vision.maxImages, 10)
+  assert.equal(loaded.vision.maxBytesPerImage, 65_536)
+  assert.equal(loaded.vision.timeoutMs, 1_000)
+  assert.equal(loaded.vision.detail, "auto")
   assert.equal(loaded.routing.autoExecuteConfidence, 1)
   assert.equal(loaded.api.extraHeaders["x-provider"], "value")
   assert.equal("unknown" in loaded, false)

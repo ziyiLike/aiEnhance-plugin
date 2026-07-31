@@ -23,6 +23,14 @@ export const DEFAULT_CONFIG = {
     responseFormat: "auto",
     extraHeaders: {},
   },
+  vision: {
+    enabled: true,
+    maxImages: 3,
+    maxBytesPerImage: 5_242_880,
+    timeoutMs: 10_000,
+    detail: "auto",
+    allowInsecureHttp: false,
+  },
   routing: {
     topK: 12,
     maxInputChars: 2_000,
@@ -96,6 +104,10 @@ export const DEFAULT_CONFIG = {
     emptyPrompt: "你可以直接和我聊天，也可以告诉我想查询什么。",
     notConfigured: "AI 服务尚未配置，请主人设置 config/aiEnhance.yaml。",
     apiError: "AI 服务暂时不可用，请稍后再试。",
+    imageError: "图片读取失败，请重新发送图片后再试。",
+    visionDisabled: "当前未开启图片识别，请先在配置中启用 vision.enabled。",
+    visionUnsupported:
+      "当前模型或兼容 API 可能不支持图片输入，请更换支持视觉的模型后再试。",
     tooLong: "消息太长了，请精简后再试。",
     busy: "当前请求较多，请稍后再试。",
     sensitive:

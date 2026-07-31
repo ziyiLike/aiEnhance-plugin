@@ -15,11 +15,19 @@ function selectedRetrievalStats(candidateId, searchResults) {
 }
 
 export class PolicyEngine {
-  decide({ route, candidate, searchResults, config }) {
+  decide({ route, candidate, searchResults, config, queryContext }) {
     if (!candidate) return { action: "clarify", reason: "candidate_missing" }
 
     if (NEVER_EXECUTE_RISKS.has(candidate.risk)) {
       return { action: "deny", reason: `risk_${candidate.risk}` }
+    }
+
+    if (queryContext?.conflict) {
+      return { action: "clarify", reason: "query_game_conflict" }
+    }
+
+    if (queryContext?.ambiguous) {
+      return { action: "clarify", reason: "query_character_ambiguous" }
     }
 
     const { selectedScore, margin } = selectedRetrievalStats(

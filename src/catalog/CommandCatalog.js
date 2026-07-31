@@ -1,4 +1,5 @@
 import { PRESET_COMMANDS, createCustomCandidate } from "./presets.js"
+import { characterRegistry } from "./CharacterRegistry.js"
 
 function normalizeText(value) {
   return String(value || "")
@@ -40,7 +41,7 @@ function pluginHintScore(query, plugin) {
   return 0
 }
 
-function gameConflictPenalty(query, candidate) {
+function legacyGameConflictPenalty(query, candidate) {
   const games = new Set()
   if (/(鸣潮|库街区|波片|声骸|共鸣者)/.test(query)) games.add("waves")
   if (/(星铁|星穹|铁道)/.test(query)) games.add("starrail")
@@ -64,12 +65,51 @@ function gameConflictPenalty(query, candidate) {
   return 0
 }
 
-function scoreCandidate(query, candidate) {
+function hintedGame(context) {
+  if (context.explicitGames.length === 1) return context.explicitGames[0]
+  if (!context.explicitGames.length && context.inferredGames.length === 1) {
+    return context.inferredGames[0]
+  }
+  return ""
+}
+
+function gameCompatibility(context, candidate) {
+  const game = hintedGame(context)
+  const supported = Array.isArray(candidate.games) ? candidate.games : []
+  if (!game || !supported.length) return { excluded: false, bonus: 0 }
+  if (!supported.includes(game)) return { excluded: true, bonus: 0 }
+
+  const acceptsCharacter = Boolean(
+    candidate.characterSlot || candidate.characterTopicSlot,
+  )
+  return {
+    excluded: false,
+    bonus: context.characters.length ? (acceptsCharacter ? 0.36 : 0) : 0.18,
+  }
+}
+
+function gameConflictPenalty(query, candidate, context = characterRegistry.analyze(query)) {
+  const compatibility = gameCompatibility(context, candidate)
+  if (compatibility.excluded) return 1
+  if (candidate.games?.length) return 0
+  return legacyGameConflictPenalty(query, candidate)
+}
+
+function scoreCandidate(
+  query,
+  candidate,
+  context = characterRegistry.analyze(query),
+) {
   const normalizedQuery = normalizeText(query)
   if (!normalizedQuery) return { score: 0, matchedTerms: [] }
 
   let score = pluginHintScore(query, candidate.plugin)
   const matchedTerms = []
+  const compatibility = gameCompatibility(context, candidate)
+  if (compatibility.excluded) {
+    return { score: 0, matchedTerms, excludedByGame: true }
+  }
+  score += compatibility.bonus
 
   for (const keyword of candidate.keywords) {
     const normalizedKeyword = normalizeText(keyword)
@@ -101,10 +141,11 @@ function scoreCandidate(query, candidate) {
   }
 
   score += bestSimilarity * 0.55
-  score -= gameConflictPenalty(query, candidate)
+  score -= gameConflictPenalty(query, candidate, context)
   return {
     score: Math.max(0, Math.min(1, Number(score.toFixed(4)))),
     matchedTerms: [...new Set(matchedTerms)].slice(0, 8),
+    excludedByGame: false,
   }
 }
 
@@ -142,8 +183,9 @@ function runtimeEntryMatches(entry, aliases) {
 }
 
 export class CommandCatalog {
-  constructor({ logger = console } = {}) {
+  constructor({ logger = console, cwd = process.cwd() } = {}) {
     this.logger = logger
+    this.cwd = cwd
     this.candidates = []
     this.byId = new Map()
     this.signature = ""
@@ -188,24 +230,33 @@ export class CommandCatalog {
     return this.byId.get(id) || null
   }
 
-  search(query, { topK = 12, minimumScore = 0.04 } = {}) {
+  async prepare({ force = false } = {}) {
+    await characterRegistry.loadInstalledPresets(this.cwd, { force })
+  }
+
+  analyze(query) {
+    return characterRegistry.analyze(query)
+  }
+
+  search(query, { topK = 12, minimumScore = 0.04, context } = {}) {
+    const queryContext = context || this.analyze(query)
     return this.candidates
       .map(candidate => ({
         candidate,
-        ...scoreCandidate(query, candidate),
+        ...scoreCandidate(query, candidate, queryContext),
       }))
       .filter(result => result.score >= minimumScore)
       .sort((left, right) => right.score - left.score || left.candidate.id.localeCompare(right.candidate.id))
       .slice(0, topK)
   }
 
-  buildCommand(candidateId, slotList = []) {
+  buildCommand(candidateId, slotList = [], options = {}) {
     const candidate = this.find(candidateId)
     if (!candidate) return { ok: false, error: "候选命令不存在" }
 
     try {
       const slots = slotsToObject(candidate, slotList)
-      const command = String(candidate.build(slots) || "").trim()
+      const command = String(candidate.build(slots, options) || "").trim()
       if (!command || command.length > 200 || /[\r\n]/.test(command)) {
         return { ok: false, error: "生成的命令无效" }
       }
@@ -267,6 +318,9 @@ export {
   ngrams,
   jaccard,
   pluginHintScore,
+  legacyGameConflictPenalty,
+  hintedGame,
+  gameCompatibility,
   gameConflictPenalty,
   scoreCandidate,
   slotsToObject,

@@ -5,6 +5,7 @@ import { cloneDefaults } from "./defaults.js"
 
 const RESPONSE_FORMATS = new Set(["auto", "json_schema", "json_object", "none"])
 const MAX_TOKEN_FIELDS = new Set(["max_tokens", "max_completion_tokens", "none"])
+const VISION_DETAIL_LEVELS = new Set(["auto", "low", "high", "original"])
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -66,6 +67,19 @@ function normalizeConfig(config) {
     : "max_tokens"
   config.api.responseFormat = RESPONSE_FORMATS.has(config.api.responseFormat)
     ? config.api.responseFormat
+    : "auto"
+
+  config.vision.maxImages = Math.round(
+    finiteNumber(config.vision.maxImages, 3, 1, 10),
+  )
+  config.vision.maxBytesPerImage = Math.round(
+    finiteNumber(config.vision.maxBytesPerImage, 5_242_880, 65_536, 20_971_520),
+  )
+  config.vision.timeoutMs = Math.round(
+    finiteNumber(config.vision.timeoutMs, 10_000, 1_000, 60_000),
+  )
+  config.vision.detail = VISION_DETAIL_LEVELS.has(config.vision.detail)
+    ? config.vision.detail
     : "auto"
 
   config.routing.topK = Math.round(finiteNumber(config.routing.topK, 12, 1, 30))
@@ -240,6 +254,8 @@ export class ConfigManager {
       model: config.api.model || "(未设置)",
       hasApiKey: Boolean(this.resolveApiKey(config)),
       responseFormat: config.api.responseFormat,
+      visionEnabled: config.vision.enabled,
+      visionMaxImages: config.vision.maxImages,
       errors: this.validate(config),
     }
   }

@@ -1,6 +1,15 @@
 import crypto from "node:crypto"
 import { isReplayedEvent } from "./SafeDispatcher.js"
+import { extractImageSources } from "../media/ImageInput.js"
 import { sendConfirmation, sendClarification, sendText } from "../ui/reply.js"
+import {
+  contextualCharacterSuggestions,
+  decisionClarification,
+  fixedSuggestions,
+  hasCharacterCommandIntent,
+  mergeSuggestions,
+  modelClarification,
+} from "../ui/suggestions.js"
 
 function eventIdentity(event) {
   const scope = event.group_id ? `group:${event.group_id}` : "private"
@@ -42,28 +51,17 @@ function shouldHandleEvent(event, config) {
 }
 
 function extractText(event) {
+  if (Array.isArray(event?.message)) {
+    const text = event.message
+      .filter(segment => segment?.type === "text" && typeof segment.text === "string")
+      .map(segment => segment.text)
+      .join("")
+      .trim()
+    if (text || event.message.some(segment => segment?.type === "image")) return text
+  }
+
   const text = event.msg ?? event.raw_message ?? ""
   return String(text).trim()
-}
-
-function fixedSuggestions(searchResults, catalog) {
-  const suggestions = []
-  for (const result of searchResults) {
-    if (result.candidate.slots.some(slot => slot.required)) continue
-    const built = catalog.buildCommand(result.candidate.id, [])
-    if (!built.ok) continue
-    suggestions.push({
-      description: result.candidate.description,
-      command: built.command,
-    })
-  }
-  return suggestions
-}
-
-function modelClarification(route, buildError) {
-  if (route.reply) return route.reply
-  if (buildError) return `${buildError}。请补充更具体的信息。`
-  return "我还不确定你想查询什么，请再具体一点。"
 }
 
 function errorSummary(error) {
@@ -76,6 +74,13 @@ function errorSummary(error) {
   return error.stack || error.message || String(error)
 }
 
+function isVisionCompatibilityError(error) {
+  return (
+    error?.name === "OpenAIHttpError" &&
+    [400, 413, 415, 422].includes(Number(error.status))
+  )
+}
+
 export class AiEnhanceService {
   constructor({
     configManager,
@@ -86,6 +91,7 @@ export class AiEnhanceService {
     memory,
     gate,
     dispatcher,
+    imageInput,
     pluginLoader,
     segment,
     logger = console,
@@ -98,6 +104,7 @@ export class AiEnhanceService {
     this.memory = memory
     this.gate = gate
     this.dispatcher = dispatcher
+    this.imageInput = imageInput
     this.pluginLoader = pluginLoader
     this.segment = segment
     this.logger = logger
@@ -115,7 +122,8 @@ export class AiEnhanceService {
     if (!config.enabled || !shouldHandleEvent(event, config)) return false
 
     const text = extractText(event)
-    if (!text) {
+    const hasImages = extractImageSources(event).length > 0
+    if (!text && !hasImages) {
       await sendText(event, config.reply.emptyPrompt, config.reply)
       return true
     }
@@ -156,18 +164,49 @@ export class AiEnhanceService {
     }
 
     try {
+      const imageResult = hasImages
+        ? await this.imageInput.prepare(event, config.vision)
+        : { hadImages: false, images: [], failures: [] }
+
+      if (imageResult.hadImages && !config.vision.enabled) {
+        this.audit(event, { decision: "vision_disabled" }, config)
+        await sendText(event, config.reply.visionDisabled, config.reply)
+        return true
+      }
+
+      if (imageResult.hadImages && imageResult.images.length === 0) {
+        this.audit(event, {
+          decision: "image_unavailable",
+          reasons: [...new Set(imageResult.failures.map(item => item.code))],
+        }, config)
+        await sendText(event, config.reply.imageError, config.reply)
+        return true
+      }
+
+      await this.catalog.prepare()
       this.catalog.configure(config.commands)
-      const searchResults = this.catalog.search(text, {
-        topK: config.routing.topK,
-      })
+      const promptText = text || "请描述用户发送的图片内容。"
+      const memoryUserText = imageResult.images.length
+        ? `${text || "[仅发送图片]"} [附带 ${imageResult.images.length} 张图片]`
+        : text
+      const queryContext = this.catalog.analyze(text)
+      const searchResults = text
+        ? this.catalog.search(text, {
+            topK: config.routing.topK,
+            context: queryContext,
+          })
+        : []
       const history = await this.memory.get(event, config.memory)
       const apiKey = this.configManager.resolveApiKey(config)
       const routing = await this.router.route({
-        text,
+        text: promptText,
+        images: imageResult.images,
         candidates: searchResults,
         history,
         api: config.api,
         apiKey,
+        context: queryContext,
+        vision: config.vision,
       })
 
       if (!routing.ok) {
@@ -181,8 +220,20 @@ export class AiEnhanceService {
 
       const route = routing.route
       if (route.mode === "chat") {
-        await sendText(event, route.reply, config.reply)
-        await this.memory.append(event, text, route.reply, config.memory)
+        const suggestions = hasCharacterCommandIntent(text)
+          ? contextualCharacterSuggestions(queryContext, text, this.catalog)
+          : []
+        if (suggestions.length) {
+          await sendClarification(event, {
+            message: route.reply,
+            suggestions,
+            segment: this.segment,
+            config: config.reply,
+          })
+        } else {
+          await sendText(event, route.reply, config.reply)
+        }
+        await this.memory.append(event, memoryUserText, route.reply, config.memory)
         this.audit(event, {
           decision: "chat",
           confidence: route.confidence,
@@ -192,14 +243,17 @@ export class AiEnhanceService {
       }
 
       if (route.mode === "clarify") {
-        const suggestions = fixedSuggestions(searchResults, this.catalog)
+        const suggestions = mergeSuggestions(
+          contextualCharacterSuggestions(queryContext, text, this.catalog),
+          fixedSuggestions(searchResults, this.catalog),
+        )
         await sendClarification(event, {
           message: route.reply,
           suggestions,
           segment: this.segment,
           config: config.reply,
         })
-        await this.memory.append(event, text, route.reply, config.memory)
+        await this.memory.append(event, memoryUserText, route.reply, config.memory)
         this.audit(event, {
           decision: "clarify",
           confidence: route.confidence,
@@ -212,7 +266,10 @@ export class AiEnhanceService {
         const message = "我没能把你的意思安全地对应到现有功能，请换一种更具体的说法。"
         await sendClarification(event, {
           message,
-          suggestions: fixedSuggestions(searchResults, this.catalog),
+          suggestions: mergeSuggestions(
+            contextualCharacterSuggestions(queryContext, text, this.catalog),
+            fixedSuggestions(searchResults, this.catalog),
+          ),
           segment: this.segment,
           config: config.reply,
         })
@@ -223,16 +280,21 @@ export class AiEnhanceService {
         return true
       }
 
-      const built = this.catalog.buildCommand(route.candidateId, route.slots)
+      const built = this.catalog.buildCommand(route.candidateId, route.slots, {
+        context: queryContext,
+      })
       if (!built.ok) {
         const message = modelClarification(route, built.error)
         await sendClarification(event, {
           message,
-          suggestions: fixedSuggestions(searchResults, this.catalog),
+          suggestions: mergeSuggestions(
+            contextualCharacterSuggestions(queryContext, text, this.catalog),
+            fixedSuggestions(searchResults, this.catalog),
+          ),
           segment: this.segment,
           config: config.reply,
         })
-        await this.memory.append(event, text, message, config.memory)
+        await this.memory.append(event, memoryUserText, message, config.memory)
         this.audit(event, {
           decision: "invalid_command_arguments",
           candidateId: route.candidateId,
@@ -246,6 +308,7 @@ export class AiEnhanceService {
         candidate: built.candidate,
         searchResults,
         config,
+        queryContext,
       })
 
       if (decision.action === "deny") {
@@ -260,14 +323,28 @@ export class AiEnhanceService {
       }
 
       if (decision.action === "clarify") {
-        const message = modelClarification(route)
+        const message =
+          route.reply || decisionClarification(decision, built.candidate)
+        const builtSuggestion = {
+          description: built.candidate.description,
+          command: built.command,
+        }
         await sendClarification(event, {
           message,
-          suggestions: fixedSuggestions(searchResults, this.catalog),
+          suggestions:
+            ["query_game_conflict", "query_character_ambiguous"].includes(
+              decision.reason,
+            )
+              ? fixedSuggestions(searchResults, this.catalog)
+              : mergeSuggestions(
+                  [builtSuggestion],
+                  contextualCharacterSuggestions(queryContext, text, this.catalog),
+                  fixedSuggestions(searchResults, this.catalog),
+                ),
           segment: this.segment,
           config: config.reply,
         })
-        await this.memory.append(event, text, message, config.memory)
+        await this.memory.append(event, memoryUserText, message, config.memory)
         this.audit(event, {
           decision: "clarify_command",
           candidateId: built.candidate.id,
@@ -339,7 +416,13 @@ export class AiEnhanceService {
     } catch (error) {
       // 第三方 API 的错误文本可能回显请求内容，日志只保留状态与错误码。
       this.logger.error?.(`请求处理失败：${errorSummary(error)}`)
-      await sendText(event, config.reply.apiError, config.reply)
+      await sendText(
+        event,
+        hasImages && isVisionCompatibilityError(error)
+          ? config.reply.visionUnsupported
+          : config.reply.apiError,
+        config.reply,
+      )
       return true
     } finally {
       gateResult.release()
@@ -368,6 +451,11 @@ export {
   shouldHandleEvent,
   extractText,
   fixedSuggestions,
+  contextualCharacterSuggestions,
+  hasCharacterCommandIntent,
+  mergeSuggestions,
   modelClarification,
+  decisionClarification,
   errorSummary,
+  isVisionCompatibilityError,
 }

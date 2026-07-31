@@ -3,6 +3,7 @@ import assert from "node:assert/strict"
 import { CommandCatalog } from "../src/catalog/CommandCatalog.js"
 import { DEFAULT_CONFIG } from "../src/config/defaults.js"
 import { createCustomCandidate } from "../src/catalog/presets.js"
+import { characterRegistry } from "../src/catalog/CharacterRegistry.js"
 
 function catalog() {
   const value = new CommandCatalog({ logger: { warn() {} } })
@@ -19,6 +20,33 @@ test("catalog retrieves the expected plugin intents from natural Chinese", () =>
   assert.equal(value.search("深渊怎么配队")[0].candidate.id, "miao.abyss_teams")
   assert.equal(value.search("看看鸣潮签到记录")[0].candidate.id, "waves.sign_records")
   assert.equal(value.search("琉璃袋在哪里")[0].candidate.id, "xiaoyao.map_location")
+  assert.equal(value.search("能给我看下遐蝶的面板吗")[0].candidate.id, "miao.profile_detail")
+  assert.equal(value.search("执行原神扫码登录")[0].candidate.id, "xiaoyao.qr_login")
+})
+
+test("character presets identify all four games before model routing", () => {
+  assert.deepEqual(characterRegistry.analyze("胡桃面板").inferredGames, ["genshin"])
+  assert.deepEqual(characterRegistry.analyze("今汐攻略").inferredGames, ["waves"])
+  assert.deepEqual(characterRegistry.analyze("遐蝶面板").inferredGames, ["starrail"])
+  assert.deepEqual(characterRegistry.analyze("星见雅面板").inferredGames, ["zzz"])
+
+  const ambiguous = characterRegistry.analyze("露西面板")
+  assert.equal(ambiguous.ambiguous, true)
+  assert.deepEqual(new Set(ambiguous.inferredGames), new Set(["waves", "zzz"]))
+})
+
+test("character game conflicts are removed from the candidate set", () => {
+  const value = catalog()
+  const starrailGuide = value.search("给我一份遐蝶的攻略")
+  assert.equal(
+    starrailGuide.some(result => result.candidate.id === "waves.guide"),
+    false,
+  )
+
+  const zzzProfile = value.search("给我看看星见雅面板")
+  for (const id of ["miao.profile_detail", "waves.profile", "xiaoyao.atlas"]) {
+    assert.equal(zzzProfile.some(result => result.candidate.id === id), false)
+  }
 })
 
 test("catalog builds parameterized commands locally", () => {
@@ -30,8 +58,21 @@ test("catalog builds parameterized commands locally", () => {
   assert.equal(built.ok, true)
   assert.equal(built.command, "#胡桃圣遗物")
 
+  const starrail = value.buildCommand("miao.profile_detail", [
+    { name: "character", value: "瑕蝶" },
+  ])
+  assert.equal(starrail.ok, true)
+  assert.equal(starrail.command, "#星铁遐蝶面板")
+
+  const starrailAlias = value.buildCommand(
+    "miao.profile_detail",
+    [{ name: "character", value: "鸭鸭" }],
+    { context: value.analyze("星铁鸭鸭面板") },
+  )
+  assert.equal(starrailAlias.command, "#星铁布洛妮娅面板")
+
   const waves = value.buildCommand("waves.profile", [
-    { name: "character", value: "今汐" },
+    { name: "character", value: "今夕" },
   ])
   assert.equal(waves.command, "~今汐面板")
 
@@ -45,6 +86,11 @@ test("catalog builds parameterized commands locally", () => {
     { name: "topic", value: "琉璃袋" },
   ])
   assert.equal(location.command, "#琉璃袋在哪里")
+
+  const starrailAtlas = value.buildCommand("xiaoyao.atlas", [
+    { name: "topic", value: "托帕&账账" },
+  ])
+  assert.equal(starrailAtlas.command, "#星铁托帕&账账图鉴")
 })
 
 test("catalog rejects missing, unknown, and command-injection-like slots", () => {
@@ -60,6 +106,18 @@ test("catalog rejects missing, unknown, and command-injection-like slots", () =>
   assert.equal(
     value.buildCommand("miao.profile_detail", [
       { name: "character", value: "删除全部面板" },
+    ]).ok,
+    false,
+  )
+  assert.equal(
+    value.buildCommand("waves.guide", [
+      { name: "character", value: "遐蝶" },
+    ]).ok,
+    false,
+  )
+  assert.equal(
+    value.buildCommand("miao.profile_detail", [
+      { name: "character", value: "今汐" },
     ]).ok,
     false,
   )

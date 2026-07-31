@@ -5,13 +5,11 @@ function canUseButtons(segment, config) {
 function buildButton(segment, event, command, label) {
   try {
     return segment.button([
-      [
-        {
-          text: label,
-          callback: command,
-          permission: event.user_id,
-        },
-      ],
+      {
+        text: label,
+        callback: command,
+        permission: String(event.user_id),
+      },
     ])
   } catch {
     return null
@@ -56,7 +54,7 @@ export async function sendClarification(
         {
           text: item.description.slice(0, 18),
           callback: item.command,
-          permission: event.user_id,
+          permission: String(event.user_id),
         },
       ])
     } catch {}
@@ -64,7 +62,9 @@ export async function sendClarification(
 
   let buttons
   try {
-    buttons = segment.button(rows)
+    // TRSS-Yunzai 的 segment.button(...data) 会把每个参数作为一行。
+    // 这里必须展开 rows；直接传 rows 会多包一层，QQBot 无法解析按钮。
+    buttons = segment.button(...rows)
   } catch {}
 
   if (!buttons) return sendText(event, text, config)

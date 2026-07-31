@@ -8,6 +8,7 @@ import { MemoryStore } from "./MemoryStore.js"
 import { RequestGate } from "./RequestGate.js"
 import { SafeDispatcher } from "./SafeDispatcher.js"
 import { AiEnhanceService } from "./AiEnhanceService.js"
+import { ImageInput } from "../media/ImageInput.js"
 import { createLogger } from "../utils/logger.js"
 
 export function createRuntime({
@@ -30,8 +31,9 @@ export function createRuntime({
     env,
     logger,
   })
-  const catalog = new CommandCatalog({ logger })
+  const catalog = new CommandCatalog({ logger, cwd })
   const client = new OpenAICompatibleClient({ fetchImpl, logger })
+  const imageInput = new ImageInput({ fetchImpl, logger })
   const router = new IntentRouter({ client, logger })
   const policy = new PolicyEngine()
   const secretDetector = new SecretDetector()
@@ -47,6 +49,7 @@ export function createRuntime({
     memory,
     gate,
     dispatcher,
+    imageInput,
     pluginLoader,
     segment,
     logger,
@@ -60,6 +63,7 @@ export function createRuntime({
     async reload() {
       configManager.invalidate()
       const config = await configManager.load({ force: true })
+      await catalog.prepare({ force: true })
       catalog.configure(config.commands)
       return config
     },
