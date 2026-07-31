@@ -293,9 +293,10 @@ routing:
 
 还可以通过 `commands.autoExecuteAllowlist` 缩小允许自动执行的候选范围。
 
-从旧版本升级且保留了原有 `config/aiEnhance.yaml` 时，如需让攻略在高置信度下
-直接执行，请把 `genshin.guide` 和 `starrail.guide` 追加到
-`commands.autoExecuteAllowlist`；未追加时仍会给出确认按钮。
+从上一版本升级且从未修改过默认自动执行白名单时，插件会自动补充
+`genshin.guide` 和 `starrail.guide`。自定义过
+`commands.autoExecuteAllowlist` 的配置不会被改动，需要按需手动追加；也可以将
+`commands.migrateLegacyAllowlist` 设为 `false`，完全关闭该兼容迁移。
 
 ## 使用方法
 

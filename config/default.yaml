@@ -57,6 +57,8 @@ commands:
     - waves
     - xiaoyao
   disabledIds: []
+  # 自动兼容上一版本尚未包含攻略候选的默认白名单；自定义过白名单时不会改动。
+  migrateLegacyAllowlist: true
   # 只有同时出现在这里、且候选本身标记为只读安全，才允许自动执行。
   autoExecuteAllowlist:
     - miao.help

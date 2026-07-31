@@ -14,6 +14,33 @@ function selectedRetrievalStats(candidateId, searchResults) {
   }
 }
 
+function autoExecuteBlockReason({
+  route,
+  candidate,
+  selectedScore,
+  margin,
+  config,
+}) {
+  if (candidate.risk === "write") return "side_effect_requires_confirmation"
+  if (candidate.risk !== "read" || candidate.autoExecute !== true) {
+    return "candidate_requires_confirmation"
+  }
+  if (!config.routing.autoExecuteEnabled) return "auto_execute_disabled"
+
+  const allowlist = new Set(config.commands.autoExecuteAllowlist || [])
+  if (!allowlist.has(candidate.id)) return "candidate_not_allowlisted"
+  if (route.confidence < config.routing.autoExecuteConfidence) {
+    return "confidence_below_auto_threshold"
+  }
+  if (selectedScore < config.routing.minAutoRetrievalScore) {
+    return "retrieval_score_below_auto_threshold"
+  }
+  if (margin < config.routing.minAutoRetrievalMargin) {
+    return "retrieval_margin_below_auto_threshold"
+  }
+  return ""
+}
+
 export class PolicyEngine {
   decide({ route, candidate, searchResults, config, queryContext }) {
     if (!candidate) return { action: "clarify", reason: "candidate_missing" }
@@ -44,17 +71,15 @@ export class PolicyEngine {
       }
     }
 
-    const allowlist = new Set(config.commands.autoExecuteAllowlist || [])
-    const canAutoExecute =
-      config.routing.autoExecuteEnabled &&
-      candidate.risk === "read" &&
-      candidate.autoExecute === true &&
-      allowlist.has(candidate.id) &&
-      route.confidence >= config.routing.autoExecuteConfidence &&
-      selectedScore >= config.routing.minAutoRetrievalScore &&
-      margin >= config.routing.minAutoRetrievalMargin
+    const blockReason = autoExecuteBlockReason({
+      route,
+      candidate,
+      selectedScore,
+      margin,
+      config,
+    })
 
-    if (canAutoExecute) {
+    if (!blockReason) {
       return {
         action: "execute",
         reason: "safe_high_confidence",
@@ -65,11 +90,15 @@ export class PolicyEngine {
 
     return {
       action: "confirm",
-      reason: candidate.risk === "write" ? "side_effect_requires_confirmation" : "not_auto_safe",
+      reason: blockReason,
       selectedScore,
       margin,
     }
   }
 }
 
-export { NEVER_EXECUTE_RISKS, selectedRetrievalStats }
+export {
+  NEVER_EXECUTE_RISKS,
+  selectedRetrievalStats,
+  autoExecuteBlockReason,
+}

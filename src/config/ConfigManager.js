@@ -1,7 +1,11 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import YAML from "yaml"
-import { cloneDefaults } from "./defaults.js"
+import {
+  GUIDE_AUTO_EXECUTE_IDS,
+  LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST,
+  cloneDefaults,
+} from "./defaults.js"
 
 const RESPONSE_FORMATS = new Set(["auto", "json_schema", "json_object", "none"])
 const MAX_TOKEN_FIELDS = new Set(["max_tokens", "max_completion_tokens", "none"])
@@ -52,6 +56,21 @@ function finiteNumber(value, fallback, minimum, maximum) {
   const number = Number(value)
   if (!Number.isFinite(number)) return fallback
   return Math.min(maximum, Math.max(minimum, number))
+}
+
+function sameStringSet(left, right) {
+  if (!Array.isArray(left) || left.length !== right.length) return false
+  const values = new Set(left.map(String))
+  return values.size === right.length && right.every(item => values.has(item))
+}
+
+function migrateLegacyAutoExecuteAllowlist(config) {
+  if (config.commands.migrateLegacyAllowlist === false) return false
+  const allowlist = config.commands.autoExecuteAllowlist
+  if (!sameStringSet(allowlist, LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST)) return false
+
+  allowlist.push(...GUIDE_AUTO_EXECUTE_IDS)
+  return true
 }
 
 function normalizeConfig(config) {
@@ -198,6 +217,11 @@ export class ConfigManager {
     const source = await fs.readFile(this.configPath, "utf8")
     const parsed = YAML.parse(source) ?? {}
     this.cache = normalizeConfig(mergeConfig(cloneDefaults(), parsed))
+    if (migrateLegacyAutoExecuteAllowlist(this.cache)) {
+      this.logger.info?.(
+        "[aiEnhance-plugin] 已为旧版默认自动执行白名单补充角色攻略候选",
+      )
+    }
     this.mtimeMs = stat.mtimeMs
     return this.cache
   }
@@ -275,4 +299,10 @@ function redactUrl(value) {
   }
 }
 
-export { mergeConfig, normalizeConfig, redactUrl }
+export {
+  mergeConfig,
+  normalizeConfig,
+  redactUrl,
+  sameStringSet,
+  migrateLegacyAutoExecuteAllowlist,
+}

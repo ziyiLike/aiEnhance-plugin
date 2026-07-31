@@ -378,12 +378,14 @@ export class AiEnhanceService {
         await sendConfirmation(event, {
           candidate: built.candidate,
           command: built.command,
+          decision,
           segment: this.segment,
           config: config.reply,
         })
         this.audit(event, {
           decision: "confirm",
           candidateId: built.candidate.id,
+          reason: decision.reason,
           confidence: route.confidence,
           retrievalScore: decision.selectedScore,
           retrievalMargin: decision.margin,

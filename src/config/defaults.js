@@ -43,6 +43,7 @@ export const DEFAULT_CONFIG = {
   commands: {
     enabledPresets: ["miao", "waves", "xiaoyao"],
     disabledIds: [],
+    migrateLegacyAllowlist: true,
     autoExecuteAllowlist: [
       "miao.help",
       "miao.genshin_calendar",
@@ -119,6 +120,13 @@ export const DEFAULT_CONFIG = {
     decisions: true,
   },
 }
+
+export const GUIDE_AUTO_EXECUTE_IDS = ["genshin.guide", "starrail.guide"]
+
+export const LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST =
+  DEFAULT_CONFIG.commands.autoExecuteAllowlist.filter(
+    id => !GUIDE_AUTO_EXECUTE_IDS.includes(id),
+  )
 
 export function cloneDefaults() {
   return structuredClone(DEFAULT_CONFIG)

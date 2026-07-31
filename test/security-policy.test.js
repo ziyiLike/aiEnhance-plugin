@@ -51,7 +51,24 @@ test("PolicyEngine only auto-executes allowlisted read-only commands with a clea
     { candidate: catalog.find("xiaoyao.stamina"), score: 0.78 },
   ]
   assert.equal(
-    policy.decide({ route, candidate, searchResults: ambiguous, config }).action,
+    policy.decide({ route, candidate, searchResults: ambiguous, config }).reason,
+    "retrieval_margin_below_auto_threshold",
+  )
+
+  config.commands.autoExecuteAllowlist = []
+  assert.equal(
+    policy.decide({ route, candidate, searchResults, config }).reason,
+    "candidate_not_allowlisted",
+  )
+
+  config.commands.autoExecuteAllowlist = [candidate.id]
+  route.confidence = 0.9
+  assert.equal(
+    policy.decide({ route, candidate, searchResults, config }).reason,
+    "confidence_below_auto_threshold",
+  )
+  assert.equal(
+    policy.decide({ route, candidate, searchResults, config }).action,
     "confirm",
   )
 })

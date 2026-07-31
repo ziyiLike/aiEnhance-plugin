@@ -23,9 +23,23 @@ export async function sendText(event, text, config) {
 
 export async function sendConfirmation(
   event,
-  { candidate, command, segment, config },
+  { candidate, command, decision, segment, config },
 ) {
-  const title = candidate.risk === "write" ? "这个操作会修改状态" : "我还不能完全确定"
+  const titles = {
+    side_effect_requires_confirmation: "这个操作会修改状态",
+    auto_execute_disabled: "命令已经识别，但自动执行已关闭",
+    candidate_requires_confirmation: "命令已经识别，但该功能要求确认",
+    candidate_not_allowlisted: "命令已经识别，但未加入自动执行白名单",
+    confidence_below_auto_threshold:
+      "命令已经匹配，但模型置信度未达到自动执行阈值",
+    retrieval_score_below_auto_threshold:
+      "命令已经匹配，但本地召回分数未达到自动执行阈值",
+    retrieval_margin_below_auto_threshold:
+      "命令已经匹配，但候选之间的分数差值不足",
+  }
+  const title =
+    titles[decision?.reason] ||
+    (candidate.risk === "write" ? "这个操作会修改状态" : "我还不能完全确定")
   const text = `${title}。你是想执行「${candidate.description}」吗？\n命令：${command}`
 
   if (!canUseButtons(segment, config)) return sendText(event, text, config)

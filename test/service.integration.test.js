@@ -233,6 +233,40 @@ test("a clear character alias guide request is canonicalized and dispatched", as
   ])
 })
 
+test("confirmation explains when a recognized guide is not auto-execute allowlisted", async () => {
+  const fixture = serviceFixture(
+    async () => ({
+      ok: true,
+      route: {
+        mode: "command",
+        candidateId: "genshin.guide",
+        slots: [{ name: "character", value: "纳西妲" }],
+        confidence: 0.99,
+        alternatives: [],
+        reply: "",
+      },
+      responseMeta: { model: "test-model" },
+    }),
+    {
+      configMutator(config) {
+        config.commands.autoExecuteAllowlist =
+          config.commands.autoExecuteAllowlist.filter(
+            id => id !== "genshin.guide",
+          )
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "给我一份纳西妲攻略",
+    raw_message: "给我一份纳西妲攻略",
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.equal(fixture.calls.dispatch, 0)
+  assert.match(String(currentEvent.replies[0]), /未加入自动执行白名单/)
+  assert.doesNotMatch(String(currentEvent.replies[0]), /不能完全确定/)
+})
+
 test("group messages without @ or alias are ignored even when Yunzai might accept them", async () => {
   const fixture = serviceFixture(async () => {
     throw new Error("router should not run")

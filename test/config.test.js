@@ -6,6 +6,10 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import YAML from "yaml"
 import { ConfigManager, redactUrl } from "../src/config/ConfigManager.js"
+import {
+  GUIDE_AUTO_EXECUTE_IDS,
+  LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST,
+} from "../src/config/defaults.js"
 
 const pluginRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -77,6 +81,43 @@ test("ConfigManager rejects non-loopback insecure HTTP by default", async t => {
   })
   const config = await manager.load()
   assert.match(manager.validate(config).join(" "), /allowInsecureHttp/)
+})
+
+test("ConfigManager only migrates an unchanged legacy default allowlist", async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ai-enhance-config-"))
+  t.after(() => fs.rm(directory, { recursive: true, force: true }))
+  const configPath = path.join(directory, "aiEnhance.yaml")
+  await fs.writeFile(
+    configPath,
+    YAML.stringify({
+      commands: {
+        autoExecuteAllowlist: LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST,
+      },
+    }),
+    "utf8",
+  )
+  const messages = []
+  const manager = new ConfigManager({
+    cwd: directory,
+    pluginRoot,
+    configPath,
+    logger: { info(message) { messages.push(message) } },
+  })
+
+  const migrated = await manager.load()
+  for (const id of GUIDE_AUTO_EXECUTE_IDS) {
+    assert.equal(migrated.commands.autoExecuteAllowlist.includes(id), true)
+  }
+  assert.match(messages.join(" "), /旧版默认自动执行白名单/)
+
+  const customized = YAML.parse(await fs.readFile(configPath, "utf8"))
+  customized.commands.autoExecuteAllowlist =
+    LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST.slice(1)
+  await fs.writeFile(configPath, YAML.stringify(customized), "utf8")
+  const narrowed = await manager.load({ force: true })
+  for (const id of GUIDE_AUTO_EXECUTE_IDS) {
+    assert.equal(narrowed.commands.autoExecuteAllowlist.includes(id), false)
+  }
 })
 
 test("public status URL redacts credentials and query parameters", () => {
