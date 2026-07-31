@@ -41,6 +41,11 @@ test("ConfigManager creates, merges, normalizes, and validates configuration", a
   source.vision.maxBytesPerImage = 1
   source.vision.timeoutMs = 100
   source.vision.detail = "unsupported"
+  source.knowledge.minConfidence = 2
+  source.knowledge.maxGuideImages = 99
+  source.knowledge.detail = "unsupported"
+  source.knowledge.webSearch.maxResults = 99
+  source.knowledge.webSearch.extraHeaders = { "x-search-provider": "value" }
   source.routing.autoExecuteConfidence = 2
   source.unknown = "ignored"
   await fs.writeFile(configPath, YAML.stringify(source), "utf8")
@@ -51,11 +56,56 @@ test("ConfigManager creates, merges, normalizes, and validates configuration", a
   assert.equal(loaded.vision.maxBytesPerImage, 65_536)
   assert.equal(loaded.vision.timeoutMs, 1_000)
   assert.equal(loaded.vision.detail, "auto")
+  assert.equal(loaded.knowledge.minConfidence, 1)
+  assert.equal(loaded.knowledge.maxGuideImages, 6)
+  assert.equal(loaded.knowledge.detail, "high")
+  assert.equal(loaded.knowledge.webSearch.maxResults, 10)
+  assert.equal(
+    loaded.knowledge.webSearch.extraHeaders["x-search-provider"],
+    "value",
+  )
   assert.equal(loaded.routing.autoExecuteConfidence, 1)
   assert.equal(loaded.api.extraHeaders["x-provider"], "value")
   assert.equal("unknown" in loaded, false)
   assert.equal(manager.resolveApiKey(loaded), "from-env")
   assert.deepEqual(manager.validate(loaded), [])
+})
+
+test("model web search validates its endpoint and can use a separate key", async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ai-enhance-config-"))
+  t.after(() => fs.rm(directory, { recursive: true, force: true }))
+  const configPath = path.join(directory, "aiEnhance.yaml")
+  await fs.writeFile(
+    configPath,
+    YAML.stringify({
+      api: {
+        model: "model",
+        apiKey: "main-secret",
+      },
+      knowledge: {
+        webSearch: {
+          enabled: true,
+          baseUrl: "http://search.example.com",
+          apiKeyEnv: "SEARCH_KEY",
+        },
+      },
+    }),
+    "utf8",
+  )
+  const manager = new ConfigManager({
+    cwd: directory,
+    pluginRoot,
+    configPath,
+    env: { SEARCH_KEY: "search-secret" },
+    logger: { info() {} },
+  })
+  const config = await manager.load()
+
+  assert.equal(manager.resolveWebSearchApiKey(config), "search-secret")
+  assert.match(
+    manager.validate(config).join(" "),
+    /knowledge\.webSearch\.allowInsecureHttp/,
+  )
 })
 
 test("ConfigManager rejects non-loopback insecure HTTP by default", async t => {

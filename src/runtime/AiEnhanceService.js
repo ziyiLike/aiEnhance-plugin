@@ -92,6 +92,7 @@ export class AiEnhanceService {
     gate,
     dispatcher,
     imageInput,
+    knowledgeService,
     pluginLoader,
     segment,
     logger = console,
@@ -105,6 +106,7 @@ export class AiEnhanceService {
     this.gate = gate
     this.dispatcher = dispatcher
     this.imageInput = imageInput
+    this.knowledgeService = knowledgeService
     this.pluginLoader = pluginLoader
     this.segment = segment
     this.logger = logger
@@ -190,6 +192,39 @@ export class AiEnhanceService {
         ? `${text || "[仅发送图片]"} [附带 ${imageResult.images.length} 张图片]`
         : text
       const queryContext = this.catalog.analyze(text)
+      const apiKey = this.configManager.resolveApiKey(config)
+
+      if (!imageResult.hadImages && this.knowledgeService) {
+        const knowledge = await this.knowledgeService.handle({
+          event,
+          text,
+          context: queryContext,
+          config,
+          apiKey,
+        })
+        if (knowledge.handled) {
+          const memoryReply =
+            knowledge.memoryReply ||
+            (knowledge.decision === "knowledge_unavailable"
+              ? config.reply.knowledgeUnavailable
+              : "已发送当前角色攻略图。")
+          await this.memory.append(event, text, memoryReply, config.memory)
+          this.audit(
+            event,
+            {
+              decision: knowledge.decision,
+              candidateId: knowledge.intent?.guide?.candidateId,
+              confidence: knowledge.confidence,
+              model: knowledge.model,
+              provider: knowledge.provider,
+              reason: knowledge.reason,
+            },
+            config,
+          )
+          return true
+        }
+      }
+
       const searchResults = text
         ? this.catalog.search(text, {
             topK: config.routing.topK,
@@ -197,7 +232,6 @@ export class AiEnhanceService {
           })
         : []
       const history = await this.memory.get(event, config.memory)
-      const apiKey = this.configManager.resolveApiKey(config)
       const routing = await this.router.route({
         text: promptText,
         images: imageResult.images,

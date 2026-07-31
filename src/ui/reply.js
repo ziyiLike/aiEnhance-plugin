@@ -85,4 +85,33 @@ export async function sendClarification(
   return event.reply([text, buttons], Boolean(config.quote))
 }
 
+export async function sendKnowledgeAnswer(
+  event,
+  { text, command, label = "查看完整攻略", segment, config },
+) {
+  if (!command || !canUseButtons(segment, config)) {
+    return sendText(event, text, config)
+  }
+
+  const button = buildButton(segment, event, command, label.slice(0, 32))
+  if (!button) return sendText(event, text, config)
+  return event.reply([String(text), button], Boolean(config.quote))
+}
+
+export async function sendCapturedReplies(event, replies, config) {
+  if (!event?.reply || !Array.isArray(replies) || !replies.length) return false
+
+  let sent = false
+  for (let index = 0; index < replies.length; index++) {
+    const reply = replies[index]
+    if (reply?.message === undefined || reply?.message === null) continue
+    await event.reply(
+      reply.message,
+      index === 0 ? Boolean(config.quote) : Boolean(reply.quote),
+    )
+    sent = true
+  }
+  return sent
+}
+
 export { canUseButtons, buildButton }

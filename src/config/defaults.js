@@ -31,6 +31,32 @@ export const DEFAULT_CONFIG = {
     detail: "auto",
     allowInsecureHttp: false,
   },
+  knowledge: {
+    enabled: true,
+    guideVisionEnabled: true,
+    model: "",
+    minConfidence: 0.78,
+    maxGuideImages: 2,
+    maxBytesPerImage: 10_485_760,
+    imageTimeoutMs: 15_000,
+    guideTimeoutMs: 45_000,
+    detail: "high",
+    temperature: 0.1,
+    maxTokens: 900,
+    webSearch: {
+      enabled: true,
+      baseUrl: "",
+      endpoint: "",
+      apiKey: "",
+      apiKeyEnv: "",
+      model: "",
+      timeoutMs: 25_000,
+      maxResults: 5,
+      allowedDomains: [],
+      allowInsecureHttp: false,
+      extraHeaders: {},
+    },
+  },
   routing: {
     topK: 12,
     maxInputChars: 2_000,
@@ -111,6 +137,8 @@ export const DEFAULT_CONFIG = {
     visionDisabled: "当前未开启图片识别，请先在配置中启用 vision.enabled。",
     visionUnsupported:
       "当前模型或兼容 API 可能不支持图片输入，请更换支持视觉的模型后再试。",
+    knowledgeUnavailable:
+      "当前没有找到能可靠回答这个角色问题的攻略资料，我也没有可发送的攻略图。",
     tooLong: "消息太长了，请精简后再试。",
     busy: "当前请求较多，请稍后再试。",
     sensitive:

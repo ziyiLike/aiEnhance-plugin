@@ -26,7 +26,10 @@ function mergeConfig(base, input, pathParts = []) {
     if (key === "__proto__" || key === "prototype" || key === "constructor") continue
 
     const containerPath = pathParts.join(".")
-    const allowsDynamicKeys = containerPath === "api.extraHeaders"
+    const allowsDynamicKeys = [
+      "api.extraHeaders",
+      "knowledge.webSearch.extraHeaders",
+    ].includes(containerPath)
 
     if (!(key in base) && !allowsDynamicKeys) continue
 
@@ -100,6 +103,56 @@ function normalizeConfig(config) {
   config.vision.detail = VISION_DETAIL_LEVELS.has(config.vision.detail)
     ? config.vision.detail
     : "auto"
+
+  config.knowledge.minConfidence = finiteNumber(
+    config.knowledge.minConfidence,
+    0.78,
+    0,
+    1,
+  )
+  config.knowledge.maxGuideImages = Math.round(
+    finiteNumber(config.knowledge.maxGuideImages, 2, 1, 6),
+  )
+  config.knowledge.maxBytesPerImage = Math.round(
+    finiteNumber(
+      config.knowledge.maxBytesPerImage,
+      10_485_760,
+      65_536,
+      20_971_520,
+    ),
+  )
+  config.knowledge.imageTimeoutMs = Math.round(
+    finiteNumber(config.knowledge.imageTimeoutMs, 15_000, 1_000, 120_000),
+  )
+  config.knowledge.guideTimeoutMs = Math.round(
+    finiteNumber(config.knowledge.guideTimeoutMs, 45_000, 1_000, 180_000),
+  )
+  config.knowledge.detail = VISION_DETAIL_LEVELS.has(config.knowledge.detail)
+    ? config.knowledge.detail
+    : "high"
+  config.knowledge.temperature =
+    config.knowledge.temperature === null
+      ? null
+      : finiteNumber(config.knowledge.temperature, 0.1, 0, 2)
+  config.knowledge.maxTokens = Math.round(
+    finiteNumber(config.knowledge.maxTokens, 900, 64, 16_384),
+  )
+
+  const webSearch = config.knowledge.webSearch
+  webSearch.timeoutMs = Math.round(
+    finiteNumber(webSearch.timeoutMs, 25_000, 1_000, 120_000),
+  )
+  webSearch.maxResults = Math.round(
+    finiteNumber(webSearch.maxResults, 5, 1, 10),
+  )
+  webSearch.allowedDomains = Array.isArray(webSearch.allowedDomains)
+    ? webSearch.allowedDomains
+        .map(String)
+        .map(item => item.trim().toLowerCase().replace(/^\./, ""))
+        .filter(Boolean)
+        .slice(0, 20)
+    : []
+  if (!isPlainObject(webSearch.extraHeaders)) webSearch.extraHeaders = {}
 
   config.routing.topK = Math.round(finiteNumber(config.routing.topK, 12, 1, 30))
   config.routing.maxInputChars = Math.round(
@@ -238,6 +291,14 @@ export class ConfigManager {
     return envName ? String(this.env[envName] || "").trim() : ""
   }
 
+  resolveWebSearchApiKey(config) {
+    const webSearch = config.knowledge.webSearch
+    const direct = String(webSearch.apiKey || "").trim()
+    if (direct) return direct
+    const envName = String(webSearch.apiKeyEnv || "").trim()
+    return envName ? String(this.env[envName] || "").trim() : ""
+  }
+
   validate(config) {
     const errors = []
     if (!config.enabled) return errors
@@ -267,6 +328,36 @@ export class ConfigManager {
       errors.push("尚未设置 API Key")
     }
 
+    const webSearch = config.knowledge.webSearch
+    if (webSearch.enabled) {
+      const configuredBaseUrl = String(webSearch.baseUrl || "").trim()
+      const searchBaseUrl = configuredBaseUrl || config.api.baseUrl
+      if (!searchBaseUrl) {
+        errors.push("knowledge.webSearch.baseUrl 尚未设置")
+      } else {
+        let searchUrl
+        try {
+          searchUrl = new URL(searchBaseUrl)
+        } catch {
+          errors.push("knowledge.webSearch.baseUrl 不是有效 URL")
+        }
+        if (searchUrl) {
+          if (!["http:", "https:"].includes(searchUrl.protocol)) {
+            errors.push("knowledge.webSearch.baseUrl 仅支持 http/https")
+          }
+          if (
+            searchUrl.protocol === "http:" &&
+            !isLoopback(searchUrl.hostname) &&
+            !webSearch.allowInsecureHttp
+          ) {
+            errors.push(
+              "非本机联网搜索 HTTP 地址需要显式开启 knowledge.webSearch.allowInsecureHttp",
+            )
+          }
+        }
+      }
+    }
+
     return errors
   }
 
@@ -280,6 +371,9 @@ export class ConfigManager {
       responseFormat: config.api.responseFormat,
       visionEnabled: config.vision.enabled,
       visionMaxImages: config.vision.maxImages,
+      knowledgeEnabled: config.knowledge.enabled,
+      knowledgeGuideVisionEnabled: config.knowledge.guideVisionEnabled,
+      webSearchEnabled: config.knowledge.webSearch.enabled,
       errors: this.validate(config),
     }
   }

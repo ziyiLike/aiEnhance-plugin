@@ -49,14 +49,20 @@ function extractErrorMessage(payload, fallback) {
   return message.replace(/\s+/g, " ").slice(0, 500)
 }
 
-function responseFormatFor(mode) {
+function responseFormatFor(
+  mode,
+  {
+    schema = ROUTE_JSON_SCHEMA,
+    name = "ai_enhance_route",
+  } = {},
+) {
   if (mode === "json_schema") {
     return {
       type: "json_schema",
       json_schema: {
-        name: "ai_enhance_route",
+        name,
         strict: true,
-        schema: ROUTE_JSON_SCHEMA,
+        schema,
       },
     }
   }
@@ -84,7 +90,14 @@ export class OpenAICompatibleClient {
     this.logger = logger
   }
 
-  async complete({ api, apiKey = "", messages, signal }) {
+  async complete({
+    api,
+    apiKey = "",
+    messages,
+    signal,
+    responseSchema = ROUTE_JSON_SCHEMA,
+    responseSchemaName = "ai_enhance_route",
+  }) {
     const modes = formatModes(api.responseFormat)
     let lastError
 
@@ -95,6 +108,8 @@ export class OpenAICompatibleClient {
           api,
           apiKey,
           messages,
+          responseSchema,
+          responseSchemaName,
           responseFormatMode: mode,
           signal,
         })
@@ -132,7 +147,15 @@ export class OpenAICompatibleClient {
     throw lastError
   }
 
-  async requestOnce({ api, apiKey, messages, responseFormatMode, signal }) {
+  async requestOnce({
+    api,
+    apiKey,
+    messages,
+    responseSchema,
+    responseSchemaName,
+    responseFormatMode,
+    signal,
+  }) {
     const controller = new AbortController()
     let timedOut = false
     const timeout = setTimeout(() => {
@@ -161,7 +184,10 @@ export class OpenAICompatibleClient {
     if (api.maxTokensField && api.maxTokensField !== "none") {
       body[api.maxTokensField] = api.maxTokens
     }
-    const responseFormat = responseFormatFor(responseFormatMode)
+    const responseFormat = responseFormatFor(responseFormatMode, {
+      schema: responseSchema,
+      name: responseSchemaName,
+    })
     if (responseFormat) body.response_format = responseFormat
 
     try {

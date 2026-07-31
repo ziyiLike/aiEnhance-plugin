@@ -155,3 +155,58 @@ test("createReplayEvent does not mutate the original event", () => {
   assert.equal(isReplayedEvent(event), false)
   assert.equal(isReplayedEvent(replay), true)
 })
+
+test("SafeDispatcher can capture plugin replies without sending them early", async () => {
+  const sent = []
+  const event = {
+    self_id: "bot",
+    user_id: "user",
+    group_id: "group",
+    message_type: "group",
+    isGroup: true,
+    group: {
+      sendMsg(message) {
+        sent.push(message)
+      },
+    },
+    reply(message) {
+      sent.push(message)
+    },
+  }
+  const pluginLoader = {
+    async deal(replay) {
+      await replay.reply("准备攻略")
+      await replay.group.sendMsg({
+        type: "image",
+        file: "/yunzai/guide.jpg",
+      })
+    },
+  }
+  const dispatcher = new SafeDispatcher({
+    pluginLoader,
+    logger: { error() {} },
+  })
+
+  const result = await dispatcher.capture(
+    event,
+    {
+      command: "#纳西妲攻略",
+      candidateId: "genshin.guide",
+    },
+    { timeoutMs: 1_000 },
+  )
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(sent, [])
+  assert.deepEqual(
+    result.replies.map(item => item.message),
+    [
+      "准备攻略",
+      {
+        type: "image",
+        file: "/yunzai/guide.jpg",
+      },
+    ],
+  )
+  assert.equal(isReplayedEvent(result.replay), true)
+})

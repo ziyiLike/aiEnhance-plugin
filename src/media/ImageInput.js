@@ -364,7 +364,12 @@ export class ImageInput {
 
 export {
   SUPPORTED_IMAGE_TYPES,
+  checkedImage,
+  decodeInlineImage,
   detectImageType,
+  fetchImage,
+  prepareSource,
+  toDataUrl,
   validateRemoteUrl,
   readLimitedBody,
 }

@@ -42,6 +42,42 @@ vision:
   # 默认只读取 HTTPS 图片；仅在可信环境确有需要时开启。
   allowInsecureHttp: false
 
+knowledge:
+  # 针对“角色带什么装备、怎么配装”等问题，后台读取对应攻略图后回答。
+  enabled: true
+  guideVisionEnabled: true
+  # 留空时使用 api.model；可单独指定更擅长读取攻略图的视觉模型。
+  model: ""
+  # 低于此置信度或攻略图没有明确依据时，不发送模型答案。
+  minConfidence: 0.78
+  maxGuideImages: 2
+  maxBytesPerImage: 10485760
+  imageTimeoutMs: 15000
+  guideTimeoutMs: 45000
+  # 攻略图文字较密，默认使用 high；兼容接口不接受 detail 时可改为 auto。
+  detail: high
+  temperature: 0.1
+  maxTokens: 900
+
+  webSearch:
+    # 攻略图无法回答时，使用当前模型在 Responses API 中的原生 web_search。
+    enabled: true
+    # 留空时复用 api.baseUrl。
+    baseUrl: ""
+    # 留空时使用 /responses。
+    endpoint: ""
+    # 留空时复用主 API Key。
+    apiKey: ""
+    apiKeyEnv: ""
+    # 留空时复用 api.model。
+    model: ""
+    timeoutMs: 25000
+    maxResults: 5
+    # 留空表示不限制；填写域名后只采用这些网站及其子域名。
+    allowedDomains: []
+    allowInsecureHttp: false
+    extraHeaders: {}
+
 routing:
   topK: 12
   maxInputChars: 2000
@@ -126,6 +162,7 @@ reply:
   imageError: 图片读取失败，请重新发送图片后再试。
   visionDisabled: 当前未开启图片识别，请先在配置中启用 vision.enabled。
   visionUnsupported: 当前模型或兼容 API 可能不支持图片输入，请更换支持视觉的模型后再试。
+  knowledgeUnavailable: 当前没有找到能可靠回答这个角色问题的攻略资料，我也没有可发送的攻略图。
   tooLong: 消息太长了，请精简后再试。
   busy: 当前请求较多，请稍后再试。
   sensitive: 检测到消息可能包含 Token、Cookie 或密钥。为保护账号安全，这条消息不会发送给 AI，请在私聊中使用准确的原插件命令。

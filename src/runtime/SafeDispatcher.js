@@ -11,6 +11,17 @@ function directReplyFor(event) {
   return undefined
 }
 
+function captureSendTarget(target, captureReply) {
+  if (!target || typeof target !== "object") return target
+  return new Proxy(target, {
+    get(source, property) {
+      if (property === "sendMsg") return captureReply
+      const value = Reflect.get(source, property, source)
+      return typeof value === "function" ? value.bind(source) : value
+    },
+  })
+}
+
 function createReplayEvent(event, command, candidateId) {
   const replay = {
     raw: event.raw,
@@ -80,6 +91,66 @@ export class SafeDispatcher {
       return { ok: false, error: "命令重派发失败" }
     }
   }
+
+  async capture(
+    event,
+    { command, candidateId },
+    { timeoutMs = 45_000 } = {},
+  ) {
+    if (!this.pluginLoader?.deal) {
+      return {
+        ok: false,
+        error: "Yunzai 插件调度器不可用",
+        replies: [],
+      }
+    }
+
+    const replies = []
+    let closed = false
+    const captureReply = async (message, quote = false) => {
+      if (!closed && message !== undefined && message !== null) {
+        replies.push({ message, quote: Boolean(quote) })
+      }
+      return {
+        message_id: `aiEnhance-captured-${replies.length}`,
+      }
+    }
+    const replay = createReplayEvent(event, command, candidateId)
+    replay.reply = captureReply
+    replay.group = captureSendTarget(event.group, captureReply)
+    replay.friend = captureSendTarget(event.friend, captureReply)
+
+    let timer
+    try {
+      await Promise.race([
+        this.pluginLoader.deal(replay),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            const error = new Error("攻略命令执行超时")
+            error.code = "capture_timeout"
+            reject(error)
+          }, timeoutMs)
+        }),
+      ])
+      closed = true
+      return { ok: true, replay, replies }
+    } catch (error) {
+      closed = true
+      this.logger.error?.(
+        `[aiEnhance-plugin] 攻略命令截获失败 code=${error?.code || "capture_failed"}`,
+      )
+      return {
+        ok: false,
+        error:
+          error?.code === "capture_timeout"
+            ? "攻略命令执行超时"
+            : "攻略命令执行失败",
+        replies,
+      }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 }
 
-export { createReplayEvent, directReplyFor }
+export { captureSendTarget, createReplayEvent, directReplyFor }

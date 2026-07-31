@@ -9,6 +9,10 @@ import { RequestGate } from "./RequestGate.js"
 import { SafeDispatcher } from "./SafeDispatcher.js"
 import { AiEnhanceService } from "./AiEnhanceService.js"
 import { ImageInput } from "../media/ImageInput.js"
+import { GuideImageInput } from "../media/GuideImageInput.js"
+import { KnowledgeAnswerer } from "../knowledge/KnowledgeAnswerer.js"
+import { WebSearchService } from "../search/WebSearchService.js"
+import { CharacterKnowledgeService } from "./CharacterKnowledgeService.js"
 import { createLogger } from "../utils/logger.js"
 
 export function createRuntime({
@@ -34,12 +38,29 @@ export function createRuntime({
   const catalog = new CommandCatalog({ logger, cwd })
   const client = new OpenAICompatibleClient({ fetchImpl, logger })
   const imageInput = new ImageInput({ fetchImpl, logger })
+  const guideImageInput = new GuideImageInput({ root: cwd, fetchImpl, logger })
   const router = new IntentRouter({ client, logger })
   const policy = new PolicyEngine()
   const secretDetector = new SecretDetector()
   const memory = new MemoryStore({ redis, logger })
   const gate = new RequestGate()
   const dispatcher = new SafeDispatcher({ pluginLoader, logger })
+  const answerer = new KnowledgeAnswerer({ client, logger })
+  const webSearch = new WebSearchService({
+    fetchImpl,
+    logger,
+  })
+  const knowledgeService = new CharacterKnowledgeService({
+    catalog,
+    dispatcher,
+    guideImageInput,
+    answerer,
+    webSearch,
+    configManager,
+    pluginLoader,
+    segment,
+    logger,
+  })
   const service = new AiEnhanceService({
     configManager,
     catalog,
@@ -50,6 +71,7 @@ export function createRuntime({
     gate,
     dispatcher,
     imageInput,
+    knowledgeService,
     pluginLoader,
     segment,
     logger,
@@ -77,6 +99,9 @@ export function createRuntime({
         autoExecuteConfidence: config.routing.autoExecuteConfidence,
         confirmConfidence: config.routing.confirmConfidence,
         memoryTtlSeconds: config.memory.ttlSeconds,
+        knowledgeEnabled: config.knowledge.enabled,
+        knowledgeGuideVisionEnabled: config.knowledge.guideVisionEnabled,
+        webSearchEnabled: config.knowledge.webSearch.enabled,
       }
     },
   }
