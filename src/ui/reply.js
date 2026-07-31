@@ -2,13 +2,12 @@ function canUseButtons(segment, config) {
   return config.useButtons && typeof segment?.button === "function"
 }
 
-function buildButton(segment, event, command, label) {
+function buildButton(segment, command, label) {
   try {
     return segment.button([
       {
         text: label,
         callback: command,
-        permission: String(event.user_id),
       },
     ])
   } catch {
@@ -44,7 +43,7 @@ export async function sendConfirmation(
 
   if (!canUseButtons(segment, config)) return sendText(event, text, config)
 
-  const button = buildButton(segment, event, command, `执行 ${command}`.slice(0, 32))
+  const button = buildButton(segment, command, `执行 ${command}`.slice(0, 32))
   if (!button) return sendText(event, text, config)
   return event.reply([text, button], Boolean(config.quote))
 }
@@ -68,7 +67,6 @@ export async function sendClarification(
         {
           text: item.description.slice(0, 18),
           callback: item.command,
-          permission: String(event.user_id),
         },
       ])
     } catch {}
@@ -93,7 +91,7 @@ export async function sendKnowledgeAnswer(
     return sendText(event, text, config)
   }
 
-  const button = buildButton(segment, event, command, label.slice(0, 32))
+  const button = buildButton(segment, command, label.slice(0, 32))
   if (!button) return sendText(event, text, config)
   return event.reply([String(text), button], Boolean(config.quote))
 }

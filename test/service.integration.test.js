@@ -695,7 +695,7 @@ test("runtime plugin absence fails before confirmation or dispatch", async () =>
   assert.match(String(currentEvent.replies[0]), /未检测到 waves 插件/)
 })
 
-test("confirmation uses a QQ callback button when the adapter supports it", async () => {
+test("confirmation uses a public QQ callback button when the adapter supports it", async () => {
   const segment = {
     button(...data) {
       return { type: "button", data }
@@ -731,7 +731,7 @@ test("confirmation uses a QQ callback button when the adapter supports it", asyn
   assert.ok(Array.isArray(reply))
   assert.equal(reply[1].type, "button")
   assert.equal(reply[1].data[0][0].callback, "~签到")
-  assert.equal(reply[1].data[0][0].permission, "user")
+  assert.equal(Object.hasOwn(reply[1].data[0][0], "permission"), false)
 })
 
 test("low-confidence parameterized commands include a directly clickable button", async () => {
@@ -810,6 +810,10 @@ test("Star Rail guide clarifications offer guide, panel, and atlas buttons", asy
     "#星铁遐蝶面板",
     "#星铁遐蝶图鉴",
   ])
+  assert.equal(
+    reply[1].data.every(row => !Object.hasOwn(row[0], "permission")),
+    true,
+  )
 })
 
 test("clear QR login intent asks for one-click confirmation", async () => {

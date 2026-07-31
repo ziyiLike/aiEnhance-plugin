@@ -324,6 +324,10 @@ test("full flow captures a character guide and answers a specific build question
     replies[0][1].rows[0][0].callback,
     "#纳西妲攻略",
   )
+  assert.equal(
+    Object.hasOwn(replies[0][1].rows[0][0], "permission"),
+    false,
+  )
 
   const request = api.getRequestBody()
   assert.equal(
