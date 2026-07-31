@@ -21,6 +21,8 @@ test("catalog retrieves the expected plugin intents from natural Chinese", () =>
   assert.equal(value.search("看看鸣潮签到记录")[0].candidate.id, "waves.sign_records")
   assert.equal(value.search("琉璃袋在哪里")[0].candidate.id, "xiaoyao.map_location")
   assert.equal(value.search("能给我看下遐蝶的面板吗")[0].candidate.id, "miao.profile_detail")
+  assert.equal(value.search("给我木偶的攻略")[0].candidate.id, "genshin.guide")
+  assert.equal(value.search("给我一份遐蝶的攻略")[0].candidate.id, "starrail.guide")
   assert.equal(value.search("执行原神扫码登录")[0].candidate.id, "xiaoyao.qr_login")
 })
 
@@ -29,6 +31,12 @@ test("character presets identify all four games before model routing", () => {
   assert.deepEqual(characterRegistry.analyze("今汐攻略").inferredGames, ["waves"])
   assert.deepEqual(characterRegistry.analyze("遐蝶面板").inferredGames, ["starrail"])
   assert.deepEqual(characterRegistry.analyze("星见雅面板").inferredGames, ["zzz"])
+  assert.deepEqual(characterRegistry.analyze("木偶攻略").characters[0], {
+    game: "genshin",
+    gameLabel: "原神",
+    character: "桑多涅",
+    matched: "木偶",
+  })
 
   const ambiguous = characterRegistry.analyze("露西面板")
   assert.equal(ambiguous.ambiguous, true)
@@ -41,6 +49,10 @@ test("character game conflicts are removed from the candidate set", () => {
   assert.equal(
     starrailGuide.some(result => result.candidate.id === "waves.guide"),
     false,
+  )
+  assert.equal(
+    starrailGuide.some(result => result.candidate.id === "starrail.guide"),
+    true,
   )
 
   const zzzProfile = value.search("给我看看星见雅面板")
@@ -75,6 +87,16 @@ test("catalog builds parameterized commands locally", () => {
     { name: "character", value: "今夕" },
   ])
   assert.equal(waves.command, "~今汐面板")
+
+  const genshinGuide = value.buildCommand("genshin.guide", [
+    { name: "character", value: "木偶" },
+  ])
+  assert.equal(genshinGuide.command, "#桑多涅攻略")
+
+  const starrailGuide = value.buildCommand("starrail.guide", [
+    { name: "character", value: "瑕蝶" },
+  ])
+  assert.equal(starrailGuide.command, "*遐蝶攻略")
 
   const gacha = value.buildCommand("miao.gacha_summary", [
     { name: "game", value: "星铁" },
@@ -116,6 +138,18 @@ test("catalog rejects missing, unknown, and command-injection-like slots", () =>
     false,
   )
   assert.equal(
+    value.buildCommand("genshin.guide", [
+      { name: "character", value: "遐蝶" },
+    ]).ok,
+    false,
+  )
+  assert.equal(
+    value.buildCommand("starrail.guide", [
+      { name: "character", value: "木偶" },
+    ]).ok,
+    false,
+  )
+  assert.equal(
     value.buildCommand("miao.profile_detail", [
       { name: "character", value: "今汐" },
     ]).ok,
@@ -148,6 +182,37 @@ test("runtime validation checks the target plugin, not an unrelated broad rule",
   }
   assert.equal(value.validateRuntime(miao, "#胡桃面板", loader).ok, true)
   assert.equal(value.validateRuntime(miao, "#胡桃图鉴", loader).ok, false)
+})
+
+test("guide runtime validation targets the actual strategy handlers", () => {
+  const value = catalog()
+  const loader = {
+    priority: [
+      {
+        key: "genshin/index.js",
+        name: "米游社攻略",
+        plugin: { rule: [{ reg: /^#?(更新)?\S+攻略([1-7])?$/ }] },
+      },
+      {
+        key: "StarRail-plugin/index.js",
+        name: "米游社星铁攻略",
+        plugin: { rule: [{ reg: /^\*(更新)?\S+攻略(\d+|all)?$/ }] },
+      },
+    ],
+  }
+
+  assert.equal(
+    value.validateRuntime(value.find("genshin.guide"), "#桑多涅攻略", loader).ok,
+    true,
+  )
+  assert.equal(
+    value.validateRuntime(value.find("starrail.guide"), "*遐蝶攻略", loader).ok,
+    true,
+  )
+  assert.equal(
+    value.validateRuntime(value.find("genshin.guide"), "*遐蝶攻略", loader).ok,
+    false,
+  )
 })
 
 test("xiaoyao compatibility accepts its internal dispatcher after plugin presence check", () => {

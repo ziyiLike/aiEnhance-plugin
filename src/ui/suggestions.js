@@ -32,23 +32,47 @@ export function contextualCharacterSuggestions(context, text, catalog) {
   }
 
   if (["genshin", "starrail"].includes(game)) {
+    const guideCandidateId =
+      game === "starrail" ? "starrail.guide" : "genshin.guide"
     const view =
       ["圣遗物", "遗器", "武器", "伤害", "详情"].find(item =>
         String(text || "").includes(item),
       ) || "面板"
-    add(
-      "miao.profile_detail",
-      [
-        { name: "character", value: character },
-        { name: "view", value: view },
-      ],
-      `${gameLabel}${character}${view}`,
-    )
-    add(
-      "xiaoyao.atlas",
-      [{ name: "topic", value: character }],
-      `${gameLabel}${character}图鉴`,
-    )
+    const addProfile = () =>
+      add(
+        "miao.profile_detail",
+        [
+          { name: "character", value: character },
+          { name: "view", value: view },
+        ],
+        `${gameLabel}${character}${view}`,
+      )
+    const addGuide = () =>
+      add(
+        guideCandidateId,
+        [{ name: "character", value: character }],
+        `${gameLabel}${character}攻略`,
+      )
+    const addAtlas = () =>
+      add(
+        "xiaoyao.atlas",
+        [{ name: "topic", value: character }],
+        `${gameLabel}${character}图鉴`,
+      )
+
+    if (/(攻略|培养|配队)/.test(String(text || ""))) {
+      addGuide()
+      addProfile()
+      addAtlas()
+    } else if (/(图鉴|资料)/.test(String(text || ""))) {
+      addAtlas()
+      addProfile()
+      addGuide()
+    } else {
+      addProfile()
+      addGuide()
+      addAtlas()
+    }
   } else if (game === "waves") {
     add(
       "waves.profile",

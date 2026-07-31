@@ -42,8 +42,14 @@
 | 插件 | 预设能力 |
 | --- | --- |
 | [miao-plugin](https://github.com/yoimiya-kokomi/miao-plugin) | 帮助、原神/星铁/绝区零日历、今日素材、角色面板、练度、抽卡记录、持有率、深渊/剧诗/危战统计 |
+| [Yunzai-genshin](https://github.com/TimeRainStarSky/Yunzai-genshin) | 原神角色攻略图（`#角色攻略`） |
+| [StarRail-plugin](https://github.com/TsukinaKasumi/StarRail-plugin) | 星铁角色攻略图（`*角色攻略`，可选安装） |
 | [waves-plugin](https://github.com/ziyiLike/waves-plugin) | 帮助、登录教程、体力、卡片、探索度、挑战、深塔、角色面板/攻略/图鉴、日历、公告、抽卡记录、数据坞、练度、签到记录、兑换码、星声、持有率 |
 | [xiaoyao-cvs-plugin](https://github.com/ctrlcvs/xiaoyao-cvs-plugin) | 帮助、版本、体力、图鉴、地图位置、米游社绑定教程、扫码登录 |
+
+喵喵角色卡上的“攻略”按钮实际会把 `#角色攻略` 或 `*角色攻略` 交给上述
+攻略插件，并不是 miao-plugin 自己处理。aiEnhance-plugin 会使用相同命令，
+执行前确认对应攻略处理器已经加载。
 
 鸣潮签到、开启自动签到和米游社扫码登录属于写操作，只会给出按钮确认，不会
 自动执行。没有进入显式预设目录的命令仍可按原插件的准确命令使用，但不会由
@@ -58,9 +64,9 @@ AI 猜测后执行。
 - 鸣潮：`waves-plugin/resources/Alias/role.yaml`；
 - 绝区零：若安装 `ZZZ-Plugin`，读取其 `defSet/alias.yaml`。
 
-当前列出的三个业务插件只为绝区零提供活动日历，没有绝区零角色面板或攻略
-命令。因此绝区零名单用于阻止角色被错派到原神、星铁或鸣潮，不会编造不存在
-的命令。遇到跨游戏同名角色时，机器人会先询问具体游戏。
+当前预设只为绝区零提供活动日历，没有绝区零角色面板或攻略命令。因此绝区零
+名单用于阻止角色被错派到原神、星铁或鸣潮，不会编造不存在的命令。遇到跨游戏
+同名角色时，机器人会先询问具体游戏。
 
 ## 环境要求
 
@@ -287,6 +293,10 @@ routing:
 
 还可以通过 `commands.autoExecuteAllowlist` 缩小允许自动执行的候选范围。
 
+从旧版本升级且保留了原有 `config/aiEnhance.yaml` 时，如需让攻略在高置信度下
+直接执行，请把 `genshin.guide` 和 `starrail.guide` 追加到
+`commands.autoExecuteAllowlist`；未追加时仍会给出确认按钮。
+
 ## 使用方法
 
 ### 群聊
@@ -297,6 +307,7 @@ routing:
 @机器人 看看我的鸣潮体力
 @机器人 胡桃的面板怎么样
 @机器人 能给我看下遐蝶的面板吗
+@机器人 给我木偶的攻略
 @机器人 给我一份遐蝶的攻略
 @机器人 我要执行原神扫码登录
 @机器人 星铁最近有什么活动
@@ -474,6 +485,8 @@ pnpm run verify
 | TRSS-Yunzai | `a3d75d5` |
 | Yunzai-QQBot-Plugin | `60a2e87` |
 | miao-plugin | `46790f0` |
+| Yunzai-genshin | `a48a571` |
+| StarRail-plugin | `e1ecd66` |
 | waves-plugin | `d0c5255` |
 | xiaoyao-cvs-plugin | `e7ab3e8` |
 | ZZZ-Plugin（仅角色归属预设） | `7bd0086` |

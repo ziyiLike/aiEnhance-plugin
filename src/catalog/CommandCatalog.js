@@ -37,6 +37,8 @@ function pluginHintScore(query, plugin) {
   ) {
     return 0.16
   }
+  if (plugin === "genshin" && /(原神|提瓦特)/.test(query)) return 0.16
+  if (plugin === "starrail" && /(星铁|星穹|铁道)/.test(query)) return 0.16
   if (plugin === "xiaoyao" && /(逍遥|原神|图鉴|树脂|便笺)/.test(query)) return 0.15
   return 0
 }
@@ -270,6 +272,10 @@ export class CommandCatalog {
   }
 
   validateRuntime(candidate, command, pluginLoader, event) {
+    if (!candidate || !regexMatches(candidate.validateCommand, command)) {
+      return { ok: false, reason: "生成命令未通过候选模板校验" }
+    }
+
     if (!pluginLoader || !Array.isArray(pluginLoader.priority)) {
       return { ok: false, reason: "当前 Yunzai 未暴露插件调度器" }
     }

@@ -51,6 +51,8 @@ export const DEFAULT_CONFIG = {
       "miao.today_material",
       "miao.profile_list",
       "miao.profile_detail",
+      "genshin.guide",
+      "starrail.guide",
       "miao.profile_stats",
       "miao.gacha_summary",
       "miao.character_ownership",

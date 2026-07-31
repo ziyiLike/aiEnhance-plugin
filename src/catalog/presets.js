@@ -67,6 +67,51 @@ function fixedCommand({
   }
 }
 
+function characterGuide({
+  id,
+  plugin,
+  description,
+  game,
+  prefix,
+  intentExamples,
+  keywords,
+  commandExamples,
+  runtimeAliases,
+}) {
+  return {
+    id,
+    plugin,
+    description,
+    intentExamples,
+    keywords,
+    risk: "read",
+    autoExecute: true,
+    runtimeAliases,
+    games: [game],
+    characterSlot: "character",
+    slots: [
+      {
+        name: "character",
+        required: true,
+        description: `${GAME_LABELS_FOR_SLOTS[game]}角色名称或常用别名`,
+      },
+    ],
+    commandExamples,
+    build: slots => {
+      const character = resolveWhitelistedCharacter(slots.character, [game])
+      return `${prefix}${character.character}攻略`
+    },
+    validateCommand: new RegExp(
+      `^${escapeRegExp(prefix)}[^#*~\\n]{1,24}攻略$`,
+    ),
+  }
+}
+
+const GAME_LABELS_FOR_SLOTS = {
+  genshin: "原神",
+  starrail: "星铁",
+}
+
 const miao = [
   fixedCommand({
     id: "miao.help",
@@ -237,6 +282,43 @@ const miao = [
     validateCommand:
       /^#(星铁)?[^#\n]{1,24}(面板|详情|圣遗物|遗器|武器|伤害)$/,
   },
+  // miao-plugin 的角色卡按钮会跳转到这两个攻略命令，但真正的处理器分别
+  // 位于 genshin 与 StarRail-plugin。候选放在 miao 预设中可兼容已有配置，
+  // 运行前仍会检查对应处理器是否确实加载并能匹配生成的命令。
+  characterGuide({
+    id: "genshin.guide",
+    plugin: "genshin",
+    description: "查询原神指定角色的培养攻略图",
+    game: "genshin",
+    prefix: "#",
+    intentExamples: [
+      "看看胡桃攻略",
+      "木偶怎么培养",
+      "给我桑多涅的配队攻略",
+    ],
+    keywords: ["原神", "角色", "攻略", "培养", "配队", "攻略图"],
+    commandExamples: ["#胡桃攻略", "#桑多涅攻略"],
+    runtimeAliases: ["genshin/index.js", "Yunzai-genshin", "米游社攻略"],
+  }),
+  characterGuide({
+    id: "starrail.guide",
+    plugin: "starrail",
+    description: "查询星铁指定角色的培养攻略图",
+    game: "starrail",
+    prefix: "*",
+    intentExamples: [
+      "看看遐蝶攻略",
+      "黄泉怎么培养",
+      "给我流萤的配队攻略",
+    ],
+    keywords: ["星铁", "星穹铁道", "角色", "攻略", "培养", "配队", "攻略图"],
+    commandExamples: ["*遐蝶攻略", "*黄泉攻略"],
+    runtimeAliases: [
+      "StarRail-plugin",
+      "starrail-plugin",
+      "米游社星铁攻略",
+    ],
+  }),
   {
     id: "miao.profile_stats",
     plugin: "miao",
@@ -775,4 +857,11 @@ export function createCustomCandidate(input) {
   })
 }
 
-export { cleanEntity, cleanEnum, escapeRegExp, gamesFromContext, fixedCommand }
+export {
+  cleanEntity,
+  cleanEnum,
+  escapeRegExp,
+  gamesFromContext,
+  fixedCommand,
+  characterGuide,
+}

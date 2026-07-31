@@ -90,6 +90,16 @@ function serviceFixture(
         plugin: { rule: [{ reg: /^#[^#]+面板$/ }] },
       },
       {
+        key: "genshin/index.js",
+        name: "米游社攻略",
+        plugin: { rule: [{ reg: /^#?(更新)?\S+攻略([1-7])?$/ }] },
+      },
+      {
+        key: "StarRail-plugin/index.js",
+        name: "米游社星铁攻略",
+        plugin: { rule: [{ reg: /^\*(更新)?\S+攻略(\d+|all)?$/ }] },
+      },
+      {
         key: "xiaoyao-cvs-plugin/index.js",
         name: "xiaoyao-cvs-plugin",
         plugin: { rule: [{ reg: /.+/ }] },
@@ -189,6 +199,38 @@ test("high-confidence safe intent is generated locally and dispatched once", asy
     candidateId: "waves.sanity",
   })
   assert.deepEqual(currentEvent.replies, [])
+})
+
+test("a clear character alias guide request is canonicalized and dispatched", async () => {
+  const fixture = serviceFixture(async input => {
+    assert.equal(input.context.characters[0].matched, "木偶")
+    assert.equal(input.context.characters[0].character, "桑多涅")
+    assert.equal(input.candidates[0].candidate.id, "genshin.guide")
+    return {
+      ok: true,
+      route: {
+        mode: "command",
+        candidateId: "genshin.guide",
+        slots: [{ name: "character", value: "木偶" }],
+        confidence: 0.99,
+        alternatives: [],
+        reply: "",
+      },
+      responseMeta: { model: "test-model" },
+    }
+  })
+  const currentEvent = event({
+    msg: "给我木偶的攻略",
+    raw_message: "给我木偶的攻略",
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.deepEqual(fixture.calls.dispatched, [
+    {
+      command: "#桑多涅攻略",
+      candidateId: "genshin.guide",
+    },
+  ])
 })
 
 test("group messages without @ or alias are ignored even when Yunzai might accept them", async () => {
@@ -695,7 +737,7 @@ test("low-confidence parameterized commands include a directly clickable button"
   assert.equal(reply[1].data[0][0].callback, "#星铁遐蝶面板")
 })
 
-test("unsupported Star Rail guide requests offer valid panel and atlas buttons", async () => {
+test("Star Rail guide clarifications offer guide, panel, and atlas buttons", async () => {
   const segment = {
     button(...data) {
       return { type: "button", data }
@@ -710,7 +752,7 @@ test("unsupported Star Rail guide requests offer valid panel and atlas buttons",
         slots: [],
         confidence: 0.4,
         alternatives: [],
-        reply: "遐蝶是星铁角色，当前预设没有星铁角色攻略命令。",
+        reply: "你是想查看遐蝶的培养攻略吗？",
       },
       responseMeta: { model: "test-model" },
     }),
@@ -729,7 +771,11 @@ test("unsupported Star Rail guide requests offer valid panel and atlas buttons",
   assert.equal(await fixture.service.handle(currentEvent), true)
   const reply = currentEvent.replies[0]
   const commands = reply[1].data.map(row => row[0].callback)
-  assert.deepEqual(commands, ["#星铁遐蝶面板", "#星铁遐蝶图鉴"])
+  assert.deepEqual(commands, [
+    "*遐蝶攻略",
+    "#星铁遐蝶面板",
+    "#星铁遐蝶图鉴",
+  ])
 })
 
 test("clear QR login intent asks for one-click confirmation", async () => {
