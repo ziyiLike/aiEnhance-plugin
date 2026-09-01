@@ -99,6 +99,7 @@ export function createRuntime({
         autoExecuteConfidence: config.routing.autoExecuteConfidence,
         confirmConfidence: config.routing.confirmConfidence,
         memoryTtlSeconds: config.memory.ttlSeconds,
+        memoryTurns: config.memory.maxTurns,
         knowledgeEnabled: config.knowledge.enabled,
         knowledgeGuideVisionEnabled: config.knowledge.guideVisionEnabled,
         webSearchEnabled: config.knowledge.webSearch.enabled,

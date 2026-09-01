@@ -1,5 +1,10 @@
 import crypto from "node:crypto"
 import { isReplayedEvent } from "./SafeDispatcher.js"
+import {
+  canResolveQuotedMessage,
+  resolveQuotedMessage,
+  withQuotedImages,
+} from "./QuotedMessage.js"
 import { extractImageSources } from "../media/ImageInput.js"
 import { sendConfirmation, sendClarification, sendText } from "../ui/reply.js"
 import {
@@ -81,6 +86,13 @@ function isVisionCompatibilityError(error) {
   )
 }
 
+function memoryAssistantContent(reply, summary) {
+  const visibleReply = String(reply || "").trim()
+  const contextSummary = String(summary || "").trim()
+  if (!contextSummary) return visibleReply
+  return `[上下文摘要] ${contextSummary}\n[当时回复] ${visibleReply}`
+}
+
 export class AiEnhanceService {
   constructor({
     configManager,
@@ -124,8 +136,8 @@ export class AiEnhanceService {
     if (!config.enabled || !shouldHandleEvent(event, config)) return false
 
     const text = extractText(event)
-    const hasImages = extractImageSources(event).length > 0
-    if (!text && !hasImages) {
+    let hasImages = extractImageSources(event).length > 0
+    if (!text && !hasImages && !canResolveQuotedMessage(event)) {
       await sendText(event, config.reply.emptyPrompt, config.reply)
       return true
     }
@@ -166,8 +178,36 @@ export class AiEnhanceService {
     }
 
     try {
+      const quotedMessage = await resolveQuotedMessage(event, {
+        logger: this.logger,
+      })
+      const quotedText = quotedMessage ? extractText(quotedMessage) : ""
+      const inputEvent = withQuotedImages(event, quotedMessage)
+      hasImages = extractImageSources(inputEvent).length > 0
+
+      if (!text && !quotedText && !hasImages) {
+        await sendText(event, config.reply.emptyPrompt, config.reply)
+        return true
+      }
+
+      if (text.length + quotedText.length > config.routing.maxInputChars) {
+        await sendText(event, config.reply.tooLong, config.reply)
+        return true
+      }
+
+      const quotedSecret = this.secretDetector.inspect(quotedText)
+      if (quotedSecret.sensitive) {
+        this.audit(event, {
+          decision: "blocked_sensitive",
+          secretTypes: quotedSecret.matches,
+          source: "quoted_message",
+        }, config)
+        await sendText(event, config.reply.sensitive, config.reply)
+        return true
+      }
+
       const imageResult = hasImages
-        ? await this.imageInput.prepare(event, config.vision)
+        ? await this.imageInput.prepare(inputEvent, config.vision)
         : { hadImages: false, images: [], failures: [] }
 
       if (imageResult.hadImages && !config.vision.enabled) {
@@ -187,10 +227,20 @@ export class AiEnhanceService {
 
       await this.catalog.prepare()
       this.catalog.configure(config.commands)
-      const promptText = text || "请描述用户发送的图片内容。"
-      const memoryUserText = imageResult.images.length
-        ? `${text || "[仅发送图片]"} [附带 ${imageResult.images.length} 张图片]`
-        : text
+      const promptText =
+        text ||
+        (quotedText
+          ? "请结合用户引用的消息进行回复。"
+          : "请描述用户发送的图片内容。")
+      const memoryUserText = [
+        text || (quotedText ? "[仅引用消息]" : "[仅发送图片]"),
+        quotedText ? `[引用消息] ${quotedText}` : "",
+        imageResult.images.length
+          ? `[附带 ${imageResult.images.length} 张图片]`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
       const queryContext = this.catalog.analyze(text)
       const apiKey = this.configManager.resolveApiKey(config)
 
@@ -234,6 +284,7 @@ export class AiEnhanceService {
       const history = await this.memory.get(event, config.memory)
       const routing = await this.router.route({
         text: promptText,
+        quotedText,
         images: imageResult.images,
         candidates: searchResults,
         history,
@@ -267,7 +318,12 @@ export class AiEnhanceService {
         } else {
           await sendText(event, route.reply, config.reply)
         }
-        await this.memory.append(event, memoryUserText, route.reply, config.memory)
+        await this.memory.append(
+          event,
+          memoryUserText,
+          memoryAssistantContent(route.reply, route.memorySummary),
+          config.memory,
+        )
         this.audit(event, {
           decision: "chat",
           confidence: route.confidence,
@@ -287,7 +343,12 @@ export class AiEnhanceService {
           segment: this.segment,
           config: config.reply,
         })
-        await this.memory.append(event, memoryUserText, route.reply, config.memory)
+        await this.memory.append(
+          event,
+          memoryUserText,
+          memoryAssistantContent(route.reply, route.memorySummary),
+          config.memory,
+        )
         this.audit(event, {
           decision: "clarify",
           confidence: route.confidence,
@@ -328,7 +389,12 @@ export class AiEnhanceService {
           segment: this.segment,
           config: config.reply,
         })
-        await this.memory.append(event, memoryUserText, message, config.memory)
+        await this.memory.append(
+          event,
+          memoryUserText,
+          memoryAssistantContent(message, route.memorySummary),
+          config.memory,
+        )
         this.audit(event, {
           decision: "invalid_command_arguments",
           candidateId: route.candidateId,
@@ -378,7 +444,12 @@ export class AiEnhanceService {
           segment: this.segment,
           config: config.reply,
         })
-        await this.memory.append(event, memoryUserText, message, config.memory)
+        await this.memory.append(
+          event,
+          memoryUserText,
+          memoryAssistantContent(message, route.memorySummary),
+          config.memory,
+        )
         this.audit(event, {
           decision: "clarify_command",
           candidateId: built.candidate.id,
@@ -496,4 +567,5 @@ export {
   decisionClarification,
   errorSummary,
   isVisionCompatibilityError,
+  memoryAssistantContent,
 }

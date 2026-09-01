@@ -14,7 +14,15 @@ function conversationKey(e) {
   ].join(":")
 }
 
+function maximumHistoryMessages(config) {
+  const turns = Number(config?.maxTurns)
+  if (!Number.isFinite(turns) || turns <= 0) return 0
+  return Math.round(turns) * 2
+}
+
 function sanitizeMessages(messages, config) {
+  const maximum = maximumHistoryMessages(config)
+  if (maximum === 0) return []
   return messages
     .filter(
       item =>
@@ -26,7 +34,7 @@ function sanitizeMessages(messages, config) {
       role: item.role,
       content: item.content.slice(0, config.maxMessageChars),
     }))
-    .slice(-config.maxMessages)
+    .slice(-maximum)
 }
 
 export class MemoryStore {
@@ -49,7 +57,7 @@ export class MemoryStore {
   }
 
   async get(e, config) {
-    if (!config.enabled || config.maxMessages === 0) return []
+    if (!config.enabled || maximumHistoryMessages(config) === 0) return []
     const key = conversationKey(e)
 
     if (this.redis?.get) {
@@ -74,7 +82,7 @@ export class MemoryStore {
   }
 
   async append(e, userContent, assistantContent, config) {
-    if (!config.enabled || config.maxMessages === 0) return
+    if (!config.enabled || maximumHistoryMessages(config) === 0) return
     const key = conversationKey(e)
     const current = await this.get(e, config)
     const next = sanitizeMessages(
@@ -125,4 +133,9 @@ export class MemoryStore {
   }
 }
 
-export { MEMORY_PREFIX, conversationKey, sanitizeMessages }
+export {
+  MEMORY_PREFIX,
+  conversationKey,
+  maximumHistoryMessages,
+  sanitizeMessages,
+}

@@ -433,6 +433,80 @@ test("QQ image segments are prepared and forwarded to the router", async () => {
   assert.match(String(currentEvent.replies[0]), /一只猫/)
 })
 
+test("a quoted image is resolved and forwarded with quoted text context", async () => {
+  const preparedImage = {
+    dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    mimeType: "image/png",
+    byteLength: 8,
+  }
+  let preparedEvent
+  let routeInput
+  let getReplyCalls = 0
+  const fixture = serviceFixture(
+    async input => {
+      routeInput = input
+      return {
+        ok: true,
+        route: {
+          mode: "chat",
+          candidateId: null,
+          slots: [],
+          confidence: 0.99,
+          alternatives: [],
+          reply: "这是无边游原的题目答案。",
+        },
+        responseMeta: { model: "vision-model" },
+      }
+    },
+    {
+      imageInput: {
+        async prepare(inputEvent) {
+          preparedEvent = inputEvent
+          return {
+            hadImages: true,
+            images: [preparedImage],
+            failures: [],
+          }
+        },
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "这个什么答案",
+    raw_message: "[回复]@机器人 这个什么答案",
+    reply_id: "quoted-message",
+    message: [
+      { type: "reply", id: "quoted-message" },
+      { type: "at", qq: "bot" },
+      { type: "text", text: "这个什么答案" },
+    ],
+    async getReply() {
+      getReplyCalls++
+      return {
+        message_id: "quoted-message",
+        message: [
+          { type: "text", text: "无边游原（字面意思）" },
+          {
+            type: "image",
+            url: "https://multimedia.nt.qq.com.cn/download?token=quoted",
+          },
+        ],
+      }
+    },
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.equal(getReplyCalls, 1)
+  assert.equal(
+    preparedEvent.message.filter(segment => segment.type === "image").length,
+    1,
+  )
+  assert.equal(routeInput.text, "这个什么答案")
+  assert.equal(routeInput.quotedText, "无边游原（字面意思）")
+  assert.deepEqual(routeInput.images, [preparedImage])
+  assert.match(String(currentEvent.replies[0]), /无边游原/)
+})
+
 test("an image-only message reaches the model with a useful fallback prompt", async () => {
   let routeInput
   const fixture = serviceFixture(

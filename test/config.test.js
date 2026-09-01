@@ -5,7 +5,11 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import YAML from "yaml"
-import { ConfigManager, redactUrl } from "../src/config/ConfigManager.js"
+import {
+  ConfigManager,
+  migrateLegacyMemoryTurns,
+  redactUrl,
+} from "../src/config/ConfigManager.js"
 import {
   GUIDE_AUTO_EXECUTE_IDS,
   LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST,
@@ -71,6 +75,45 @@ test("ConfigManager creates, merges, normalizes, and validates configuration", a
   assert.equal("unknown" in loaded, false)
   assert.equal(manager.resolveApiKey(loaded), "from-env")
   assert.deepEqual(manager.validate(loaded), [])
+})
+
+test("memory turns migrate from legacy messages and persist through the command API", async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "ai-enhance-config-"))
+  t.after(() => fs.rm(directory, { recursive: true, force: true }))
+  const configPath = path.join(directory, "aiEnhance.yaml")
+  await fs.writeFile(
+    configPath,
+    [
+      "# keep this operator comment",
+      "memory:",
+      "  enabled: true",
+      "  ttlSeconds: 900",
+      "  maxMessages: 8",
+      "  maxMessageChars: 1000",
+      "",
+    ].join("\n"),
+    "utf8",
+  )
+  const manager = new ConfigManager({
+    cwd: directory,
+    pluginRoot,
+    configPath,
+    logger: { info() {} },
+  })
+
+  assert.equal((await manager.load()).memory.maxTurns, 20)
+  assert.equal(await manager.setMemoryTurns(12), 12)
+
+  const persistedText = await fs.readFile(configPath, "utf8")
+  const persisted = YAML.parse(persistedText)
+  assert.match(persistedText, /keep this operator comment/)
+  assert.equal(persisted.memory.maxTurns, 12)
+  assert.equal(Object.hasOwn(persisted.memory, "maxMessages"), false)
+  await assert.rejects(() => manager.setMemoryTurns(51), /0 到 50/)
+
+  const customLegacy = { memory: { maxMessages: 5 } }
+  assert.equal(migrateLegacyMemoryTurns(customLegacy), true)
+  assert.equal(customLegacy.memory.maxTurns, 3)
 })
 
 test("model web search validates its endpoint and can use a separate key", async t => {

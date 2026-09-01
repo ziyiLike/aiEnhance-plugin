@@ -5,6 +5,7 @@ import PluginsLoader from "../../lib/plugins/loader.js"
 import { createRuntime } from "./src/runtime/createRuntime.js"
 
 const pluginRoot = path.dirname(fileURLToPath(import.meta.url))
+const MEMORY_TURNS_PATTERN = /^#[Aa][Ii]配置轮次(?:\s+(\d+))?\s*$/
 let runtime
 
 function getRuntime() {
@@ -36,6 +37,11 @@ export class AiEnhanceControl extends plugin {
           fnc: "clearMemory",
         },
         {
+          reg: MEMORY_TURNS_PATTERN.source,
+          fnc: "configureMemoryTurns",
+          permission: "master",
+        },
+        {
           reg: "^#[Aa][Ii]状态$",
           fnc: "status",
           permission: "master",
@@ -55,9 +61,10 @@ export class AiEnhanceControl extends plugin {
         "aiEnhance-plugin 使用说明",
         "• 群聊：@机器人 后直接说需求",
         "• 私聊：直接对话或描述想查询的内容",
-        "• 图片：发送图片并询问其中的内容（模型需支持视觉）",
+        "• 图片：发送或引用图片并询问其中的内容（模型需支持视觉）",
         "• 攻略问答：直接问“纳西妲带什么圣遗物”等具体养成问题",
         "• #AI清空会话",
+        "• #AI配置轮次 20（主人）",
         "• #AI状态（主人）",
         "• #AI重载（主人）",
         "",
@@ -70,6 +77,44 @@ export class AiEnhanceControl extends plugin {
   async clearMemory() {
     await getRuntime().service.clearMemory(this.e)
     return this.reply("已清空当前会话记录。", true)
+  }
+
+  async configureMemoryTurns() {
+    const message = String(this.e?.msg ?? this.e?.raw_message ?? "").trim()
+    const match = MEMORY_TURNS_PATTERN.exec(message)
+    if (!match) return false
+
+    const currentRuntime = getRuntime()
+    if (match[1] === undefined) {
+      const config = await currentRuntime.configManager.load()
+      return this.reply(
+        `当前短期记忆上限为 ${config.memory.maxTurns} 轮。`,
+        true,
+      )
+    }
+
+    try {
+      const turns = await currentRuntime.configManager.setMemoryTurns(
+        Number(match[1]),
+      )
+      return this.reply(
+        turns === 0
+          ? "已关闭短期会话记忆。"
+          : `已将短期记忆上限设置为 ${turns} 轮，立即生效。`,
+        true,
+      )
+    } catch (error) {
+      const errorCode = String(error?.code || error?.name || "unknown")
+        .replace(/[^\w.-]/g, "")
+        .slice(0, 80)
+      currentRuntime.logger.error?.(`短期记忆轮次配置失败 code=${errorCode}`)
+      return this.reply(
+        error instanceof RangeError
+          ? error.message
+          : "短期记忆配置写入失败，请检查配置文件权限。",
+        true,
+      )
+    }
   }
 
   async status() {
@@ -89,6 +134,7 @@ export class AiEnhanceControl extends plugin {
         `候选命令：${status.candidateCount}`,
         `自动执行：${status.autoExecuteEnabled ? "开启" : "关闭"}`,
         `阈值：执行 ${status.autoExecuteConfidence} / 确认 ${status.confirmConfidence}`,
+        `会话记忆：${status.memoryTurns === 0 ? "关闭" : `${status.memoryTurns} 轮`}`,
         `会话 TTL：${status.memoryTtlSeconds} 秒`,
         `配置问题：${errors}`,
       ].join("\n"),

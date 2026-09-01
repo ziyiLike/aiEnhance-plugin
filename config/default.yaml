@@ -147,7 +147,8 @@ commands:
 memory:
   enabled: true
   ttlSeconds: 900
-  maxMessages: 8
+  # 一轮包含一条用户消息和一条机器人回复；0 表示关闭会话记忆。
+  maxTurns: 20
   maxMessageChars: 1000
 
 limits:

@@ -72,7 +72,7 @@ test("MemoryStore isolates group conversations and trims history", async () => {
   const config = {
     enabled: true,
     ttlSeconds: 900,
-    maxMessages: 2,
+    maxTurns: 1,
     maxMessageChars: 5,
   }
   const first = {
@@ -90,6 +90,12 @@ test("MemoryStore isolates group conversations and trims history", async () => {
   ])
   assert.deepEqual(await store.get(second, config), [])
   assert.notEqual(conversationKey(first), conversationKey(second))
+
+  await store.append(first, "second-user", "second-assistant", config)
+  assert.deepEqual(await store.get(first, config), [
+    { role: "user", content: "secon" },
+    { role: "assistant", content: "secon" },
+  ])
 
   await store.clear(first)
   assert.deepEqual(await store.get(first, config), [])

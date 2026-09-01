@@ -2,7 +2,9 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import YAML from "yaml"
 import {
+  DEFAULT_MEMORY_TURNS,
   GUIDE_AUTO_EXECUTE_IDS,
+  LEGACY_DEFAULT_MEMORY_MESSAGES,
   LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST,
   cloneDefaults,
 } from "./defaults.js"
@@ -74,6 +76,34 @@ function migrateLegacyAutoExecuteAllowlist(config) {
 
   allowlist.push(...GUIDE_AUTO_EXECUTE_IDS)
   return true
+}
+
+function migrateLegacyMemoryTurns(config) {
+  const memory = config?.memory
+  if (
+    !isPlainObject(memory) ||
+    Object.hasOwn(memory, "maxTurns") ||
+    !Object.hasOwn(memory, "maxMessages")
+  ) {
+    return false
+  }
+
+  const legacyMessages = Number(memory.maxMessages)
+  if (!Number.isFinite(legacyMessages)) return false
+
+  memory.maxTurns =
+    legacyMessages === LEGACY_DEFAULT_MEMORY_MESSAGES
+      ? DEFAULT_MEMORY_TURNS
+      : Math.ceil(Math.max(0, legacyMessages) / 2)
+  return true
+}
+
+function checkedMemoryTurns(value) {
+  const turns = Number(value)
+  if (!Number.isInteger(turns) || turns < 0 || turns > 50) {
+    throw new RangeError("记忆轮次必须是 0 到 50 之间的整数")
+  }
+  return turns
 }
 
 function normalizeConfig(config) {
@@ -189,8 +219,8 @@ function normalizeConfig(config) {
   config.memory.ttlSeconds = Math.round(
     finiteNumber(config.memory.ttlSeconds, 900, 60, 86_400),
   )
-  config.memory.maxMessages = Math.round(
-    finiteNumber(config.memory.maxMessages, 8, 0, 30),
+  config.memory.maxTurns = Math.round(
+    finiteNumber(config.memory.maxTurns, DEFAULT_MEMORY_TURNS, 0, 50),
   )
   config.memory.maxMessageChars = Math.round(
     finiteNumber(config.memory.maxMessageChars, 1_000, 50, 5_000),
@@ -272,6 +302,7 @@ export class ConfigManager {
 
     const source = await fs.readFile(this.configPath, "utf8")
     const parsed = YAML.parse(source) ?? {}
+    migrateLegacyMemoryTurns(parsed)
     this.cache = normalizeConfig(mergeConfig(cloneDefaults(), parsed))
     if (migrateLegacyAutoExecuteAllowlist(this.cache)) {
       this.logger.info?.(
@@ -285,6 +316,37 @@ export class ConfigManager {
   invalidate() {
     this.cache = null
     this.mtimeMs = -1
+  }
+
+  async setMemoryTurns(value) {
+    const turns = checkedMemoryTurns(value)
+    await this.ensureConfigFile()
+
+    const source = await fs.readFile(this.configPath, "utf8")
+    const document = YAML.parseDocument(source)
+    if (document.errors.length) throw document.errors[0]
+
+    const parsed = document.toJS() ?? {}
+    if (!isPlainObject(parsed.memory)) document.set("memory", {})
+    document.setIn(["memory", "maxTurns"], turns)
+    document.deleteIn(["memory", "maxMessages"])
+
+    const temporaryPath = `${this.configPath}.${process.pid}.${Date.now()}.tmp`
+    try {
+      await fs.writeFile(temporaryPath, String(document), {
+        encoding: "utf8",
+        mode: 0o600,
+        flag: "wx",
+      })
+      await fs.rename(temporaryPath, this.configPath)
+      await fs.chmod(this.configPath, 0o600).catch(() => {})
+    } finally {
+      await fs.unlink(temporaryPath).catch(() => {})
+    }
+
+    this.invalidate()
+    const config = await this.load({ force: true })
+    return config.memory.maxTurns
   }
 
   resolveApiKey(config) {
@@ -397,7 +459,9 @@ function redactUrl(value) {
 }
 
 export {
+  checkedMemoryTurns,
   mergeConfig,
+  migrateLegacyMemoryTurns,
   normalizeConfig,
   redactUrl,
   sameStringSet,

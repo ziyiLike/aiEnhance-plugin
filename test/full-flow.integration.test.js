@@ -19,6 +19,7 @@ const COMMAND_ROUTE = {
   confidence: 0.99,
   alternatives: [],
   reply: "",
+  memorySummary: "",
 }
 
 function jpegWithSize(width, height) {
@@ -163,6 +164,7 @@ test("full flow converts a QQ image and sends multimodal Chat Completions conten
     confidence: 0.99,
     alternatives: [],
     reply: "图中是一只猫。",
+    memorySummary: "图片主体是一只银色短毛猫，圆脸、绿色眼睛，可能是英国短毛猫。",
   })
   t.after(async () => {
     await api.close()
@@ -246,6 +248,31 @@ test("full flow converts a QQ image and sends multimodal Chat Completions conten
     `data:image/png;base64,${pngSignature.toString("base64")}`,
   )
   assert.doesNotMatch(JSON.stringify(request), /rkey=secret/)
+
+  const followUpEvent = {
+    ...event,
+    msg: "这是什么猫",
+    raw_message: "这是什么猫",
+    message: [{ type: "text", text: "这是什么猫" }],
+  }
+  assert.equal(await runtime.service.handle(followUpEvent), true)
+
+  const followUpRequest = api.getRequestBody()
+  const remembered = followUpRequest.messages.find(
+    message =>
+      message.role === "assistant" &&
+      typeof message.content === "string" &&
+      message.content.includes("上下文摘要"),
+  )
+  assert.ok(remembered)
+  assert.match(remembered.content, /银色短毛猫/)
+  assert.match(remembered.content, /英国短毛猫/)
+  assert.equal(
+    followUpRequest.messages
+      .slice(1, -1)
+      .some(message => Array.isArray(message.content)),
+    false,
+  )
 })
 
 test("full flow captures a character guide and answers a specific build question", async t => {

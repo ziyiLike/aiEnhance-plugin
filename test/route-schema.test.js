@@ -17,11 +17,13 @@ test("parseRouteResponse validates and normalizes a command route", () => {
       confidence: 0.97,
       alternatives: [{ candidateId: "waves.guide", confidence: 0.2 }],
       reply: "",
+      memorySummary: "",
     }),
   )
 
   assert.equal(result.ok, true)
   assert.equal(result.data.candidateId, "waves.profile")
+  assert.equal(result.data.memorySummary, "")
   assert.deepEqual(result.data.slots, [{ name: "character", value: "今汐" }])
 })
 
@@ -93,4 +95,17 @@ test("parseRouteResponse fails closed on coerced types and unknown fields", () =
     }),
   )
   assert.equal(extraField.ok, false)
+
+  const invalidMemorySummary = parseRouteResponse(
+    JSON.stringify({
+      mode: "chat",
+      candidateId: null,
+      slots: [],
+      confidence: 0.9,
+      alternatives: [],
+      reply: "你好",
+      memorySummary: 123,
+    }),
+  )
+  assert.equal(invalidMemorySummary.ok, false)
 })

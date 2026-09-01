@@ -1,3 +1,6 @@
+export const DEFAULT_MEMORY_TURNS = 20
+export const LEGACY_DEFAULT_MEMORY_MESSAGES = 8
+
 export const DEFAULT_CONFIG = {
   enabled: true,
   trigger: {
@@ -120,7 +123,7 @@ export const DEFAULT_CONFIG = {
   memory: {
     enabled: true,
     ttlSeconds: 900,
-    maxMessages: 8,
+    maxTurns: DEFAULT_MEMORY_TURNS,
     maxMessageChars: 1_000,
   },
   limits: {

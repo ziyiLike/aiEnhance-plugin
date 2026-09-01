@@ -61,7 +61,15 @@ test("plugin index imports from a real Yunzai plugins/<name> directory layout", 
 
   assert.equal(control.name, "aiEnhance-plugin 管理")
   assert.equal(control.priority, 10)
-  assert.equal(control.rule.length, 4)
+  assert.equal(control.rule.length, 5)
+  assert.deepEqual(
+    control.rule.find(rule => rule.fnc === "configureMemoryTurns"),
+    {
+      reg: "^#[Aa][Ii]配置轮次(?:\\s+(\\d+))?\\s*$",
+      fnc: "configureMemoryTurns",
+      permission: "master",
+    },
+  )
   assert.equal(entry.name, "aiEnhance-plugin 兜底")
   assert.equal(entry.priority, 999_999_999)
   assert.equal(entry.rule[0].reg, "^[\\s\\S]*$")

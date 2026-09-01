@@ -8,6 +8,7 @@ export const ROUTE_JSON_SCHEMA = {
     "confidence",
     "alternatives",
     "reply",
+    "memorySummary",
   ],
   properties: {
     mode: {
@@ -51,6 +52,10 @@ export const ROUTE_JSON_SCHEMA = {
     reply: {
       type: "string",
       maxLength: 2_000,
+    },
+    memorySummary: {
+      type: "string",
+      maxLength: 600,
     },
   },
 }
@@ -111,6 +116,7 @@ export function parseRouteResponse(text) {
     "alternatives",
     "reply",
   ]
+  if (Object.hasOwn(raw, "memorySummary")) routeKeys.push("memorySummary")
   if (!hasExactKeys(raw, routeKeys)) {
     return { ok: false, error: "路由结果字段不完整或包含未知字段" }
   }
@@ -193,6 +199,12 @@ export function parseRouteResponse(text) {
     return { ok: false, error: `${raw.mode} 模式缺少回复` }
   }
 
+  const rawMemorySummary = raw.memorySummary ?? ""
+  if (typeof rawMemorySummary !== "string" || rawMemorySummary.length > 600) {
+    return { ok: false, error: "memorySummary 无效" }
+  }
+  const memorySummary = rawMemorySummary.trim()
+
   return {
     ok: true,
     data: {
@@ -202,6 +214,7 @@ export function parseRouteResponse(text) {
       confidence,
       alternatives,
       reply,
+      memorySummary,
     },
   }
 }
