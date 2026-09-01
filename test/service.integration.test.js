@@ -507,6 +507,112 @@ test("a quoted image is resolved and forwarded with quoted text context", async 
   assert.match(String(currentEvent.replies[0]), /无边游原/)
 })
 
+test("a QQ embedded quoted image reaches vision without getReply", async () => {
+  const preparedImage = {
+    dataUrl: "data:image/jpeg;base64,/9j/",
+    mimeType: "image/jpeg",
+    byteLength: 3,
+  }
+  let preparedEvent
+  let routeInput
+  const fixture = serviceFixture(
+    async input => {
+      routeInput = input
+      return {
+        ok: true,
+        route: {
+          mode: "chat",
+          candidateId: null,
+          slots: [],
+          confidence: 0.99,
+          alternatives: [],
+          reply: "引用图片里是一只猫。",
+        },
+        responseMeta: { model: "vision-model" },
+      }
+    },
+    {
+      imageInput: {
+        async prepare(inputEvent) {
+          preparedEvent = inputEvent
+          return {
+            hadImages: true,
+            images: [preparedImage],
+            failures: [],
+          }
+        },
+      },
+    },
+  )
+  const quotedImageUrl =
+    "https://multimedia.nt.qq.com.cn/download?token=embedded-quoted"
+  const currentEvent = event({
+    msg: "图中有什么内容",
+    raw_message: "图中有什么内容",
+    message: [
+      { type: "at", qq: "bot" },
+      { type: "text", text: "图中有什么内容" },
+    ],
+    raw: {
+      message_type: "group",
+      message_scene: {
+        ext: [
+          "msg_idx=REFIDX_current==",
+          "auth_token=must-not-be-used",
+          "ref_msg_idx=TMP_quoted==",
+        ],
+      },
+      msg_elements: [
+        {
+          msg_idx: "REFIDX_current==",
+          content: "当前消息不应混入引用内容",
+        },
+        {
+          message_type: 103,
+          msg_elements: [
+            {
+              msg_idx: "TMP_quoted==",
+              content: "一张猫照片",
+              attachments: [
+                {
+                  content_type: "image/jpeg",
+                  filename: "cat.jpg",
+                  url: quotedImageUrl,
+                  width: 1280,
+                  height: 720,
+                  size: 256_000,
+                },
+                {
+                  content_type: "video/mp4",
+                  url: "https://example.com/ignored.mp4",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.deepEqual(
+    preparedEvent.message.filter(segment => segment.type === "image"),
+    [
+      {
+        type: "image",
+        url: quotedImageUrl,
+        size: 256_000,
+        width: 1280,
+        height: 720,
+      },
+    ],
+  )
+  assert.equal(routeInput.text, "图中有什么内容")
+  assert.equal(routeInput.quotedText, "一张猫照片")
+  assert.deepEqual(routeInput.images, [preparedImage])
+  assert.match(String(currentEvent.replies[0]), /一只猫/)
+})
+
 test("an image-only message reaches the model with a useful fallback prompt", async () => {
   let routeInput
   const fixture = serviceFixture(
