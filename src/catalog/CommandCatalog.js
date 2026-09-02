@@ -240,15 +240,24 @@ export class CommandCatalog {
     return characterRegistry.analyze(query)
   }
 
-  search(query, { topK = 12, minimumScore = 0.04, context } = {}) {
+  rank(query, { context } = {}) {
     const queryContext = context || this.analyze(query)
     return this.candidates
       .map(candidate => ({
         candidate,
         ...scoreCandidate(query, candidate, queryContext),
       }))
+      .filter(result => !result.excludedByGame)
+      .sort(
+        (left, right) =>
+          right.score - left.score ||
+          left.candidate.id.localeCompare(right.candidate.id),
+      )
+  }
+
+  search(query, { topK = 12, minimumScore = 0.04, context } = {}) {
+    return this.rank(query, { context })
       .filter(result => result.score >= minimumScore)
-      .sort((left, right) => right.score - left.score || left.candidate.id.localeCompare(right.candidate.id))
       .slice(0, topK)
   }
 

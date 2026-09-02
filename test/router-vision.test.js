@@ -66,3 +66,64 @@ test("IntentRouter forwards quoted context and image parts while preserving stru
   assert.equal(messages.at(-1).content[1].type, "image_url")
   assert.equal("detail" in messages.at(-1).content[1].image_url, false)
 })
+
+test("IntentRouter includes the full catalog and marks only local likely candidates", async () => {
+  let messages
+  const candidate = (id, description, command) => ({
+    candidate: {
+      id,
+      plugin: "test-plugin",
+      description,
+      intentExamples: [`怎么${description}`],
+      commandExamples: [command],
+      slots: [],
+      games: ["genshin"],
+      risk: "read",
+    },
+    score: 0.5,
+  })
+  const likely = candidate("test.likely", "查看常用功能", "#常用功能")
+  const catalogOnly = candidate("test.catalog", "查看完整教程", "#完整教程")
+  const router = new IntentRouter({
+    client: {
+      async complete(input) {
+        messages = input.messages
+        return {
+          content: JSON.stringify({
+            mode: "chat",
+            candidateId: null,
+            slots: [],
+            confidence: 0.9,
+            alternatives: [],
+            reply: "好的。",
+            memorySummary: "",
+          }),
+          model: "test-model",
+        }
+      },
+    },
+    logger: { warn() {} },
+  })
+
+  await router.route({
+    text: "有哪些功能",
+    candidates: [likely, catalogOnly],
+    likelyCandidates: [likely],
+    history: [],
+    api: {},
+    apiKey: "",
+    context: {},
+    vision: {},
+  })
+
+  const content = messages.at(-1).content
+  const payload = JSON.parse(content.slice(content.indexOf("{")))
+  assert.deepEqual(payload.likelyCandidateIds, ["test.likely"])
+  assert.deepEqual(
+    payload.candidates.map(item => item.id),
+    ["test.likely", "test.catalog"],
+  )
+  assert.ok(payload.candidates[0].examples.length > 0)
+  assert.equal(Object.hasOwn(payload.candidates[1], "examples"), false)
+  assert.deepEqual(payload.candidates[1].commandExamples, ["#完整教程"])
+})

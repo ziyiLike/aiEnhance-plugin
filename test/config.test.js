@@ -11,8 +11,10 @@ import {
   redactUrl,
 } from "../src/config/ConfigManager.js"
 import {
+  COMMAND_AUDIT_AUTO_EXECUTE_IDS,
   GUIDE_AUTO_EXECUTE_IDS,
   LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST,
+  PRE_COMMAND_AUDIT_AUTO_EXECUTE_ALLOWLIST,
 } from "../src/config/defaults.js"
 
 const pluginRoot = path.resolve(
@@ -203,14 +205,36 @@ test("ConfigManager only migrates an unchanged legacy default allowlist", async 
   for (const id of GUIDE_AUTO_EXECUTE_IDS) {
     assert.equal(migrated.commands.autoExecuteAllowlist.includes(id), true)
   }
+  for (const id of COMMAND_AUDIT_AUTO_EXECUTE_IDS) {
+    assert.equal(migrated.commands.autoExecuteAllowlist.includes(id), true)
+  }
   assert.match(messages.join(" "), /旧版默认自动执行白名单/)
 
-  const customized = YAML.parse(await fs.readFile(configPath, "utf8"))
-  customized.commands.autoExecuteAllowlist =
-    LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST.slice(1)
-  await fs.writeFile(configPath, YAML.stringify(customized), "utf8")
+  await fs.writeFile(
+    configPath,
+    YAML.stringify({
+      commands: {
+        autoExecuteAllowlist: PRE_COMMAND_AUDIT_AUTO_EXECUTE_ALLOWLIST,
+      },
+    }),
+    "utf8",
+  )
+  const previousDefault = await manager.load({ force: true })
+  for (const id of COMMAND_AUDIT_AUTO_EXECUTE_IDS) {
+    assert.equal(previousDefault.commands.autoExecuteAllowlist.includes(id), true)
+  }
+
+  await fs.writeFile(
+    configPath,
+    YAML.stringify({
+      commands: {
+        autoExecuteAllowlist: PRE_COMMAND_AUDIT_AUTO_EXECUTE_ALLOWLIST.slice(1),
+      },
+    }),
+    "utf8",
+  )
   const narrowed = await manager.load({ force: true })
-  for (const id of GUIDE_AUTO_EXECUTE_IDS) {
+  for (const id of COMMAND_AUDIT_AUTO_EXECUTE_IDS) {
     assert.equal(narrowed.commands.autoExecuteAllowlist.includes(id), false)
   }
 })

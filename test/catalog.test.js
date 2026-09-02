@@ -14,6 +14,7 @@ function catalog() {
 test("catalog retrieves the expected plugin intents from natural Chinese", () => {
   const value = catalog()
   assert.equal(value.search("看看我的鸣潮体力")[0].candidate.id, "waves.sanity")
+  assert.equal(value.search("看看我的原神体力")[0].candidate.id, "xiaoyao.stamina")
   assert.equal(value.search("胡桃的面板怎么样")[0].candidate.id, "miao.profile_detail")
   assert.equal(value.search("星铁最近有什么活动")[0].candidate.id, "miao.starrail_calendar")
   assert.equal(value.search("无相之雷是什么怪")[0].candidate.id, "xiaoyao.atlas")
@@ -24,6 +25,18 @@ test("catalog retrieves the expected plugin intents from natural Chinese", () =>
   assert.equal(value.search("给我木偶的攻略")[0].candidate.id, "genshin.guide")
   assert.equal(value.search("给我一份遐蝶的攻略")[0].candidate.id, "starrail.guide")
   assert.equal(value.search("执行原神扫码登录")[0].candidate.id, "xiaoyao.qr_login")
+  assert.equal(value.search("我怎么绑定原神")[0].candidate.id, "genshin.bind_uid")
+  assert.equal(value.search("看看星铁体力")[0].candidate.id, "starrail.sanity")
+  assert.equal(
+    value.search("看看本期鸣潮海墟")[0].candidate.id,
+    "waves.haixu_schedule",
+  )
+  assert.equal(value.search("帮我原神签到")[0].candidate.id, "xiaoyao.genshin_sign")
+  assert.equal(value.search("我的绝区零 UID")[0].candidate.id, "zzz.show_uid")
+  assert.equal(
+    value.search("原神米游社怎么绑定")[0].candidate.id,
+    "xiaoyao.account_help",
+  )
 })
 
 test("character presets identify all four games before model routing", () => {
@@ -113,6 +126,26 @@ test("catalog builds parameterized commands locally", () => {
     { name: "topic", value: "托帕&账账" },
   ])
   assert.equal(starrailAtlas.command, "#星铁托帕&账账图鉴")
+
+  const interactiveBind = value.buildCommand("genshin.bind_uid", [], {
+    context: value.analyze("我怎么绑定原神"),
+  })
+  assert.equal(interactiveBind.command, "#绑定uid")
+
+  const directBind = value.buildCommand(
+    "genshin.bind_uid",
+    [{ name: "uid", value: "123456789" }],
+    { context: value.analyze("绑定原神 123456789") },
+  )
+  assert.equal(directBind.command, "#绑定123456789")
+
+  const starrailBind = value.buildCommand("starrail.bind_uid", [
+    { name: "uid", value: "123456789" },
+  ])
+  assert.equal(starrailBind.command, "#星铁绑定123456789")
+
+  assert.equal(value.buildCommand("starrail.sanity").command, "*体力")
+  assert.equal(value.buildCommand("waves.haixu_schedule").command, "~当期海墟")
 })
 
 test("catalog rejects missing, unknown, and command-injection-like slots", () => {
@@ -158,6 +191,12 @@ test("catalog rejects missing, unknown, and command-injection-like slots", () =>
   assert.equal(
     value.buildCommand("xiaoyao.atlas", [
       { name: "topic", value: "胡桃\n#喵喵强制更新" },
+    ]).ok,
+    false,
+  )
+  assert.equal(
+    value.buildCommand("genshin.bind_uid", [
+      { name: "uid", value: "12345;#重启" },
     ]).ok,
     false,
   )

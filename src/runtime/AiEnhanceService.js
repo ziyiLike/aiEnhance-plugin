@@ -227,6 +227,7 @@ export class AiEnhanceService {
 
       await this.catalog.prepare()
       this.catalog.configure(config.commands)
+      const routingQuery = [text, quotedText].filter(Boolean).join("\n")
       const promptText =
         text ||
         (quotedText
@@ -241,7 +242,7 @@ export class AiEnhanceService {
       ]
         .filter(Boolean)
         .join(" ")
-      const queryContext = this.catalog.analyze(text)
+      const queryContext = this.catalog.analyze(routingQuery)
       const apiKey = this.configManager.resolveApiKey(config)
 
       if (!imageResult.hadImages && this.knowledgeService) {
@@ -275,18 +276,19 @@ export class AiEnhanceService {
         }
       }
 
-      const searchResults = text
-        ? this.catalog.search(text, {
-            topK: config.routing.topK,
-            context: queryContext,
-          })
+      const rankedCandidates = routingQuery
+        ? this.catalog.rank(routingQuery, { context: queryContext })
         : []
+      const searchResults = rankedCandidates
+        .filter(result => result.score >= 0.04)
+        .slice(0, config.routing.topK)
       const history = await this.memory.get(event, config.memory)
       const routing = await this.router.route({
         text: promptText,
         quotedText,
         images: imageResult.images,
-        candidates: searchResults,
+        candidates: rankedCandidates,
+        likelyCandidates: searchResults,
         history,
         api: config.api,
         apiKey,
@@ -356,7 +358,9 @@ export class AiEnhanceService {
         return true
       }
 
-      const offeredIds = new Set(searchResults.map(result => result.candidate.id))
+      const offeredIds = new Set(
+        rankedCandidates.map(result => result.candidate.id),
+      )
       if (!offeredIds.has(route.candidateId)) {
         const message = "我没能把你的意思安全地对应到现有功能，请换一种更具体的说法。"
         await sendClarification(event, {
@@ -406,7 +410,7 @@ export class AiEnhanceService {
       const decision = this.policy.decide({
         route,
         candidate: built.candidate,
-        searchResults,
+        searchResults: rankedCandidates,
         config,
         queryContext,
       })

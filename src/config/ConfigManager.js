@@ -2,10 +2,12 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import YAML from "yaml"
 import {
+  COMMAND_AUDIT_AUTO_EXECUTE_IDS,
   DEFAULT_MEMORY_TURNS,
   GUIDE_AUTO_EXECUTE_IDS,
   LEGACY_DEFAULT_MEMORY_MESSAGES,
   LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST,
+  PRE_COMMAND_AUDIT_AUTO_EXECUTE_ALLOWLIST,
   cloneDefaults,
 } from "./defaults.js"
 
@@ -72,9 +74,21 @@ function sameStringSet(left, right) {
 function migrateLegacyAutoExecuteAllowlist(config) {
   if (config.commands.migrateLegacyAllowlist === false) return false
   const allowlist = config.commands.autoExecuteAllowlist
-  if (!sameStringSet(allowlist, LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST)) return false
+  let additions = []
 
-  allowlist.push(...GUIDE_AUTO_EXECUTE_IDS)
+  if (sameStringSet(allowlist, LEGACY_DEFAULT_AUTO_EXECUTE_ALLOWLIST)) {
+    additions = [...GUIDE_AUTO_EXECUTE_IDS, ...COMMAND_AUDIT_AUTO_EXECUTE_IDS]
+  } else if (
+    sameStringSet(allowlist, PRE_COMMAND_AUDIT_AUTO_EXECUTE_ALLOWLIST)
+  ) {
+    additions = COMMAND_AUDIT_AUTO_EXECUTE_IDS
+  }
+
+  const existing = new Set(allowlist)
+  additions = additions.filter(id => !existing.has(id))
+  if (!additions.length) return false
+
+  allowlist.push(...additions)
   return true
 }
 
@@ -306,7 +320,7 @@ export class ConfigManager {
     this.cache = normalizeConfig(mergeConfig(cloneDefaults(), parsed))
     if (migrateLegacyAutoExecuteAllowlist(this.cache)) {
       this.logger.info?.(
-        "[aiEnhance-plugin] 已为旧版默认自动执行白名单补充角色攻略候选",
+        "[aiEnhance-plugin] 已为旧版默认自动执行白名单补充新增只读候选",
       )
     }
     this.mtimeMs = stat.mtimeMs

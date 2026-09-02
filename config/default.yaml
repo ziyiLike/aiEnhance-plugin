@@ -81,6 +81,7 @@ knowledge:
     extraHeaders: {}
 
 routing:
+  # 本地优先候选的数量；完整的兼容命令目录仍会同时提供给模型。
   topK: 12
   maxInputChars: 2000
   autoExecuteEnabled: true
@@ -95,7 +96,7 @@ commands:
     - waves
     - xiaoyao
   disabledIds: []
-  # 自动兼容上一版本尚未包含攻略候选的默认白名单；自定义过白名单时不会改动。
+  # 自动兼容旧版默认白名单；管理员自定义过白名单时不会改动。
   migrateLegacyAllowlist: true
   # 只有同时出现在这里、且候选本身标记为只读安全，才允许自动执行。
   autoExecuteAllowlist:
@@ -141,6 +142,46 @@ commands:
     - xiaoyao.atlas
     - xiaoyao.map_location
     - xiaoyao.account_help
+    - miao.version
+    - miao.panel_help
+    - genshin.show_uid
+    - starrail.show_uid
+    - zzz.show_uid
+    - genshin.role_card
+    - genshin.exploration
+    - genshin.abyss
+    - genshin.theater
+    - genshin.ledger
+    - genshin.development_help
+    - genshin.announcements
+    - genshin.redemption_codes
+    - zzz.sanity
+    - zzz.announcements
+    - zzz.redemption_codes
+    - starrail.help
+    - starrail.sanity
+    - starrail.monthly_income
+    - starrail.card
+    - starrail.online_stats
+    - starrail.gacha_help
+    - starrail.gacha_records
+    - starrail.challenge_overview
+    - starrail.simulated_universe
+    - starrail.divergent_universe
+    - starrail.strength_rank
+    - starrail.development_help
+    - starrail.announcements
+    - starrail.redemption_codes
+    - waves.task_list
+    - waves.gacha_help
+    - waves.tower_schedule
+    - waves.haixu
+    - waves.haixu_schedule
+    - waves.matrix
+    - waves.matrix_schedule
+    - waves.fotg_schedule
+    - waves.echo_inventory
+    - xiaoyao.currency_status
   # 自定义项只支持固定命令；有参数的命令请通过代码添加受限模板。
   custom: []
 

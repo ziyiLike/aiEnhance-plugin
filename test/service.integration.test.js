@@ -95,6 +95,17 @@ function serviceFixture(
         plugin: { rule: [{ reg: /^#?(更新)?\S+攻略([1-7])?$/ }] },
       },
       {
+        key: "genshin/user.js",
+        name: "用户绑定",
+        plugin: {
+          rule: [
+            {
+              reg: /^#(原神|星铁|绝区零)?绑定(uid)?(\s|\+)*[0-9]+$/i,
+            },
+          ],
+        },
+      },
+      {
         key: "StarRail-plugin/index.js",
         name: "米游社星铁攻略",
         plugin: { rule: [{ reg: /^\*(更新)?\S+攻略(\d+|all)?$/ }] },
@@ -233,7 +244,7 @@ test("a clear character alias guide request is canonicalized and dispatched", as
   ])
 })
 
-test("confirmation explains when a recognized guide is not auto-execute allowlisted", async () => {
+test("confirmation keeps internal policy details out of the user-facing reply", async () => {
   const fixture = serviceFixture(
     async () => ({
       ok: true,
@@ -263,8 +274,11 @@ test("confirmation explains when a recognized guide is not auto-execute allowlis
 
   assert.equal(await fixture.service.handle(currentEvent), true)
   assert.equal(fixture.calls.dispatch, 0)
-  assert.match(String(currentEvent.replies[0]), /未加入自动执行白名单/)
-  assert.doesNotMatch(String(currentEvent.replies[0]), /不能完全确定/)
+  assert.match(String(currentEvent.replies[0]), /我理解你是想查询原神指定角色的培养攻略图/)
+  assert.doesNotMatch(
+    String(currentEvent.replies[0]),
+    /白名单|阈值|置信度|召回分数/,
+  )
 })
 
 test("group messages without @ or alias are ignored even when Yunzai might accept them", async () => {
@@ -376,6 +390,44 @@ test("normal chat is replied to and not dispatched", async () => {
   assert.equal(await fixture.service.handle(currentEvent), true)
   assert.equal(fixture.calls.dispatch, 0)
   assert.match(String(currentEvent.replies[0]), /你好/)
+})
+
+test("router receives the complete compatible command catalog beyond local topK", async () => {
+  const fixture = serviceFixture(
+    async input => {
+      const offeredIds = input.candidates.map(result => result.candidate.id)
+      const likelyIds = input.likelyCandidates.map(result => result.candidate.id)
+
+      assert.equal(likelyIds.length, 1)
+      assert.equal(likelyIds.includes("xiaoyao.account_help"), false)
+      assert.equal(offeredIds.includes("xiaoyao.account_help"), true)
+      assert.ok(offeredIds.length > likelyIds.length)
+      return {
+        ok: true,
+        route: {
+          mode: "chat",
+          candidateId: null,
+          slots: [],
+          confidence: 0.95,
+          alternatives: [],
+          reply: "你可以告诉我想使用哪项原神功能。",
+        },
+        responseMeta: { model: "test-model" },
+      }
+    },
+    {
+      configMutator(config) {
+        config.routing.topK = 1
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "原神有什么功能",
+    raw_message: "原神有什么功能",
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.equal(fixture.calls.router, 1)
 })
 
 test("QQ image segments are prepared and forwarded to the router", async () => {
@@ -722,12 +774,12 @@ test("vision compatibility errors produce an actionable model hint", async () =>
   assert.match(String(currentEvent.replies[0]), /不支持图片输入/)
 })
 
-test("lower confidence command asks for confirmation instead of dispatching", async () => {
+test("binding help confirmation is conversational and hides routing internals", async () => {
   const fixture = serviceFixture(async () => ({
     ok: true,
     route: {
       mode: "command",
-      candidateId: "waves.sanity",
+      candidateId: "genshin.bind_uid",
       slots: [],
       confidence: 0.8,
       alternatives: [],
@@ -735,11 +787,23 @@ test("lower confidence command asks for confirmation instead of dispatching", as
     },
     responseMeta: { model: "test-model" },
   }))
-  const currentEvent = event()
+  const currentEvent = event({
+    msg: "我怎么绑定原神？",
+    raw_message: "我怎么绑定原神？",
+  })
 
   assert.equal(await fixture.service.handle(currentEvent), true)
   assert.equal(fixture.calls.dispatch, 0)
-  assert.match(String(currentEvent.replies[0]), /~体力/)
+  assert.match(
+    String(currentEvent.replies[0]),
+    /绑定原神游戏 UID/,
+  )
+  assert.match(String(currentEvent.replies[0]), /#绑定uid/)
+  assert.doesNotMatch(String(currentEvent.replies[0]), /米游社/)
+  assert.doesNotMatch(
+    String(currentEvent.replies[0]),
+    /白名单|阈值|置信度|召回分数/,
+  )
 })
 
 test("side-effecting command requires confirmation even at confidence 1", async () => {
@@ -762,7 +826,7 @@ test("side-effecting command requires confirmation even at confidence 1", async 
 
   assert.equal(await fixture.service.handle(currentEvent), true)
   assert.equal(fixture.calls.dispatch, 0)
-  assert.match(String(currentEvent.replies[0]), /修改状态/)
+  assert.match(String(currentEvent.replies[0]), /更改账号或功能状态/)
   assert.match(String(currentEvent.replies[0]), /~签到/)
 })
 
@@ -911,6 +975,8 @@ test("confirmation uses a public QQ callback button when the adapter supports it
   assert.ok(Array.isArray(reply))
   assert.equal(reply[1].type, "button")
   assert.equal(reply[1].data[0][0].callback, "~签到")
+  assert.match(reply[1].data[0][0].text, /确认执行一次鸣潮库街区签到/)
+  assert.doesNotMatch(reply[1].data[0][0].text, /~签到/)
   assert.equal(Object.hasOwn(reply[1].data[0][0], "permission"), false)
 })
 
@@ -1030,7 +1096,7 @@ test("clear QR login intent asks for one-click confirmation", async () => {
   assert.equal(await fixture.service.handle(currentEvent), true)
   assert.equal(fixture.calls.dispatch, 0)
   const reply = currentEvent.replies[0]
-  assert.match(reply[0], /修改状态/)
+  assert.match(reply[0], /更改账号或功能状态/)
   assert.equal(reply[1].data[0][0].callback, "#扫码登录")
 })
 

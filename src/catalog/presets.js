@@ -6,6 +6,7 @@ import {
 const SAFE_ENTITY_PATTERN = /^[A-Za-z0-9\u3400-\u9fff·・_\-\s]{1,24}$/
 const FORBIDDEN_ENTITY_WORDS =
   /(删除|清除|移除|更新|重载|设置|上传|添加|开启|关闭|登录|绑定|解绑|强制|重启|token|cookie|stoken|api.?key)/i
+const GAME_UID_PATTERN = /^(?:(?:1[0-9]|[1-9])[0-9]{8}|[1-9][0-9]{7})$/
 
 function cleanEntity(value) {
   const text = String(value || "").trim().replace(/\s+/g, " ")
@@ -19,6 +20,15 @@ function cleanEnum(value, allowedValues, fallback = "") {
   const text = String(value || "").trim()
   if (!text && fallback) return fallback
   if (!allowedValues.includes(text)) throw new Error(`参数必须是：${allowedValues.join("、")}`)
+  return text
+}
+
+function cleanGameUid(value) {
+  const text = String(value || "").trim()
+  if (!text) return ""
+  if (!GAME_UID_PATTERN.test(text)) {
+    throw new Error("UID 格式不正确，请只提供有效的游戏 UID")
+  }
   return text
 }
 
@@ -67,6 +77,10 @@ function fixedCommand({
   }
 }
 
+function fixedCommandGroup(defaults, entries) {
+  return entries.map(entry => fixedCommand({ ...defaults, ...entry }))
+}
+
 function characterGuide({
   id,
   plugin,
@@ -110,7 +124,63 @@ function characterGuide({
 const GAME_LABELS_FOR_SLOTS = {
   genshin: "原神",
   starrail: "星铁",
+  zzz: "绝区零",
 }
+
+function gameUidBinding({ id, game, prefix, intentExamples }) {
+  const gameLabel = GAME_LABELS_FOR_SLOTS[game]
+  return {
+    id,
+    plugin: "genshin",
+    description: `绑定${gameLabel}游戏 UID`,
+    intentExamples,
+    keywords: [gameLabel, "绑定", "UID", "游戏账号"],
+    risk: "write",
+    autoExecute: false,
+    runtimeAliases: ["Yunzai-genshin", "genshin/", "用户绑定"],
+    // 不带 UID 的交互式命令由 Yunzai-genshin 的 accept() 处理，
+    // 不会出现在普通 rule 列表中，因此这里只校验插件存在和本地命令模板。
+    runtimeRuleOptional: true,
+    games: [game],
+    slots: [
+      {
+        name: "uid",
+        required: false,
+        description: "纯数字游戏 UID；用户没有提供时留空以进入交互式绑定",
+      },
+    ],
+    commandExamples: [`#${prefix}绑定uid`, `#${prefix}绑定123456789`],
+    build: slots => `#${prefix}绑定${cleanGameUid(slots.uid) || "uid"}`,
+    validateCommand: new RegExp(
+      `^#${escapeRegExp(prefix)}绑定(?:uid|(?:(?:1[0-9]|[1-9])[0-9]{8}|[1-9][0-9]{7}))$`,
+      "i",
+    ),
+  }
+}
+
+function gameUidLookup({ id, game, prefix, intentExamples }) {
+  const gameLabel = GAME_LABELS_FOR_SLOTS[game]
+  return fixedCommand({
+    id,
+    plugin: "genshin",
+    description: `查看当前绑定的${gameLabel}游戏 UID`,
+    command: `#${prefix}uid`,
+    intentExamples,
+    keywords: [gameLabel, "UID", "查看绑定", "游戏账号"],
+    runtimeAliases: ["Yunzai-genshin", "genshin/", "用户绑定"],
+    games: [game],
+  })
+}
+
+const MIAO_RUNTIME_ALIASES = ["miao-plugin", "喵喵"]
+const GENSHIN_RUNTIME_ALIASES = ["Yunzai-genshin", "genshin/"]
+const STARRAIL_RUNTIME_ALIASES = [
+  "StarRail-plugin",
+  "starrail-plugin",
+  "星铁plugin",
+]
+const WAVES_RUNTIME_ALIASES = ["waves-plugin", "鸣潮-"]
+const XIAOYAO_RUNTIME_ALIASES = ["xiaoyao-cvs-plugin", "图鉴插件"]
 
 const miao = [
   fixedCommand({
@@ -122,6 +192,275 @@ const miao = [
     keywords: ["喵喵", "原神", "帮助", "菜单", "命令", "功能"],
     runtimeAliases: ["miao-plugin", "喵喵"],
   }),
+  ...fixedCommandGroup(
+    {
+      plugin: "miao",
+      runtimeAliases: MIAO_RUNTIME_ALIASES,
+    },
+    [
+      {
+        id: "miao.version",
+        description: "查看喵喵插件版本和更新说明",
+        command: "#喵喵版本",
+        intentExamples: ["喵喵插件是什么版本", "看看喵喵版本更新"],
+        keywords: ["喵喵", "版本", "更新说明"],
+      },
+      {
+        id: "miao.panel_help",
+        description: "查看角色面板获取、更新和替换帮助",
+        command: "#面板帮助",
+        intentExamples: ["面板怎么用", "角色面板怎么更新", "看看面板帮助"],
+        keywords: ["原神", "星铁", "面板", "帮助", "更新", "替换"],
+        games: ["genshin", "starrail"],
+      },
+    ],
+  ),
+  gameUidBinding({
+    id: "genshin.bind_uid",
+    game: "genshin",
+    prefix: "",
+    intentExamples: [
+      "我怎么绑定原神",
+      "绑定原神 UID",
+      "把我的原神 UID 绑到机器人",
+    ],
+  }),
+  gameUidBinding({
+    id: "starrail.bind_uid",
+    game: "starrail",
+    prefix: "星铁",
+    intentExamples: ["星铁怎么绑定 UID", "绑定星铁账号", "绑定星穹铁道 UID"],
+  }),
+  gameUidBinding({
+    id: "zzz.bind_uid",
+    game: "zzz",
+    prefix: "绝区零",
+    intentExamples: ["绝区零怎么绑定 UID", "绑定绝区零账号 UID"],
+  }),
+  gameUidLookup({
+    id: "genshin.show_uid",
+    game: "genshin",
+    prefix: "",
+    intentExamples: ["看看我绑定的原神 UID", "我的原神 UID 是多少"],
+  }),
+  gameUidLookup({
+    id: "starrail.show_uid",
+    game: "starrail",
+    prefix: "星铁",
+    intentExamples: ["看看我绑定的星铁 UID", "我的星穹铁道 UID"],
+  }),
+  gameUidLookup({
+    id: "zzz.show_uid",
+    game: "zzz",
+    prefix: "绝区零",
+    intentExamples: ["看看我绑定的绝区零 UID", "我的绝区零 UID"],
+  }),
+  ...fixedCommandGroup(
+    {
+      plugin: "genshin",
+      runtimeAliases: GENSHIN_RUNTIME_ALIASES,
+    },
+    [
+      {
+        id: "genshin.role_card",
+        description: "查看原神账号角色卡片和角色数据",
+        command: "#角色卡片",
+        intentExamples: ["看看我的原神角色", "查询原神角色卡片"],
+        keywords: ["原神", "角色", "卡片", "账号", "角色数据"],
+        games: ["genshin"],
+      },
+      {
+        id: "genshin.exploration",
+        description: "查看原神地图探索、宝箱和声望进度",
+        command: "#探索",
+        intentExamples: ["看看我的原神探索度", "原神地图探索进度"],
+        keywords: ["原神", "探索", "探索度", "地图", "宝箱", "声望"],
+        games: ["genshin"],
+      },
+      {
+        id: "genshin.abyss",
+        description: "查看自己的原神深境螺旋挑战记录",
+        command: "#深渊",
+        intentExamples: ["看看我的原神深渊", "查询深境螺旋战绩"],
+        keywords: ["原神", "深渊", "深境螺旋", "战绩", "挑战记录"],
+        games: ["genshin"],
+      },
+      {
+        id: "genshin.theater",
+        description: "查看自己的原神幻想真境剧诗挑战记录",
+        command: "#幻想真境剧诗",
+        intentExamples: ["看看我的幻想真境剧诗", "查询原神剧诗战绩"],
+        keywords: ["原神", "幻想真境剧诗", "剧诗", "战绩"],
+        games: ["genshin"],
+      },
+      {
+        id: "genshin.ledger",
+        description: "查看原神旅行者札记和当月原石收入",
+        command: "#原石",
+        intentExamples: ["这个月拿了多少原石", "看看旅行者札记", "原神月度收入"],
+        keywords: ["原神", "原石", "札记", "收入", "月度", "获取"],
+        games: ["genshin"],
+      },
+      {
+        id: "genshin.development_help",
+        description: "查看原神角色养成材料计算命令说明",
+        command: "#角色养成",
+        intentExamples: ["原神养成计算怎么用", "看看角色养成材料计算帮助"],
+        keywords: ["原神", "角色", "养成", "材料", "计算", "帮助"],
+        games: ["genshin"],
+      },
+      {
+        id: "genshin.announcements",
+        description: "查看原神官方公告和资讯",
+        command: "#原神公告",
+        intentExamples: ["看看原神最新公告", "原神最近有什么资讯"],
+        keywords: ["原神", "官方", "公告", "资讯", "活动"],
+        games: ["genshin"],
+      },
+      {
+        id: "genshin.redemption_codes",
+        description: "查看原神前瞻直播兑换码",
+        command: "#原神兑换码",
+        intentExamples: ["原神前瞻兑换码", "看看原神直播兑换码"],
+        keywords: ["原神", "前瞻", "直播", "兑换码", "礼包码"],
+        games: ["genshin"],
+      },
+      {
+        id: "zzz.sanity",
+        description: "查询绝区零电量和实时便笺数据",
+        command: "#绝区零体力",
+        intentExamples: ["看看绝区零体力", "我的绝区零电量还有多少"],
+        keywords: ["绝区零", "体力", "电量", "便笺", "日常"],
+        games: ["zzz"],
+      },
+      {
+        id: "zzz.announcements",
+        description: "查看绝区零官方公告和资讯",
+        command: "#绝区零公告",
+        intentExamples: ["看看绝区零最新公告", "绝区零最近有什么资讯"],
+        keywords: ["绝区零", "官方", "公告", "资讯", "活动"],
+        games: ["zzz"],
+      },
+      {
+        id: "zzz.redemption_codes",
+        description: "查看绝区零前瞻直播兑换码",
+        command: "#绝区零兑换码",
+        intentExamples: ["绝区零前瞻兑换码", "看看绝区零直播兑换码"],
+        keywords: ["绝区零", "前瞻", "直播", "兑换码", "礼包码"],
+        games: ["zzz"],
+      },
+    ],
+  ),
+  ...fixedCommandGroup(
+    {
+      plugin: "starrail",
+      runtimeAliases: STARRAIL_RUNTIME_ALIASES,
+      games: ["starrail"],
+    },
+    [
+      {
+        id: "starrail.help",
+        description: "查看星铁插件帮助和功能菜单",
+        command: "*帮助",
+        intentExamples: ["星铁插件怎么用", "看看星铁命令菜单"],
+        keywords: ["星铁", "星穹铁道", "帮助", "菜单", "功能"],
+      },
+      {
+        id: "starrail.sanity",
+        description: "查询星铁开拓力、委托和实时便笺数据",
+        command: "*体力",
+        intentExamples: ["看看星铁体力", "我的开拓力还有多少"],
+        keywords: ["星铁", "星穹铁道", "体力", "开拓力", "委托", "便笺"],
+      },
+      {
+        id: "starrail.monthly_income",
+        description: "查看星铁开拓月历和当月星琼收入",
+        command: "*收入",
+        intentExamples: ["这个月拿了多少星琼", "看看星铁月度收入"],
+        keywords: ["星铁", "星琼", "收入", "开拓月历", "月度", "获取"],
+      },
+      {
+        id: "starrail.card",
+        description: "查看星铁账号角色卡片和探索信息",
+        command: "*卡片",
+        intentExamples: ["看看我的星铁卡片", "查询星穹铁道角色数据"],
+        keywords: ["星铁", "星穹铁道", "角色", "卡片", "账号", "探索"],
+      },
+      {
+        id: "starrail.online_stats",
+        description: "根据开拓力记录查看星铁在线时长统计",
+        command: "*在线时长",
+        intentExamples: ["看看我的星铁在线时长", "统计星铁在线时间"],
+        keywords: ["星铁", "在线", "在线时长", "时间", "统计"],
+      },
+      {
+        id: "starrail.gacha_help",
+        description: "查看星铁跃迁记录绑定和导入教程",
+        command: "*抽卡帮助",
+        intentExamples: ["星铁抽卡记录怎么导入", "看看跃迁链接绑定教程"],
+        keywords: ["星铁", "跃迁", "抽卡", "记录", "链接", "导入", "帮助"],
+      },
+      {
+        id: "starrail.gacha_records",
+        description: "查看星铁跃迁记录和抽卡分析",
+        command: "*跃迁分析",
+        intentExamples: ["看看我的星铁跃迁记录", "分析一下星铁抽卡"],
+        keywords: ["星铁", "跃迁", "抽卡", "记录", "分析", "统计"],
+      },
+      {
+        id: "starrail.challenge_overview",
+        description: "查看星铁忘却、虚构、末日和仲裁挑战总览",
+        command: "*深渊",
+        intentExamples: ["看看我的星铁深渊", "星铁挑战战绩总览"],
+        keywords: ["星铁", "深渊", "忘却", "混沌", "虚构", "末日", "仲裁", "战绩"],
+      },
+      {
+        id: "starrail.simulated_universe",
+        description: "查看星铁模拟宇宙挑战记录",
+        command: "*宇宙",
+        intentExamples: ["看看我的模拟宇宙", "星铁宇宙战绩"],
+        keywords: ["星铁", "模拟宇宙", "宇宙", "战绩", "挑战"],
+      },
+      {
+        id: "starrail.divergent_universe",
+        description: "查看星铁差分宇宙挑战记录",
+        command: "*差分",
+        intentExamples: ["看看我的差分宇宙", "星铁差分战绩"],
+        keywords: ["星铁", "差分宇宙", "差分", "演算", "战绩"],
+      },
+      {
+        id: "starrail.strength_rank",
+        description: "查看星铁全角色强度榜参考图",
+        command: "*强度榜",
+        intentExamples: ["看看星铁角色强度榜", "星铁哪些角色比较强"],
+        keywords: ["星铁", "角色", "强度榜", "强度", "排行", "参考"],
+      },
+      {
+        id: "starrail.development_help",
+        description: "查看星铁角色养成材料计算命令说明",
+        command: "#星铁角色养成",
+        intentExamples: ["星铁养成计算怎么用", "看看星铁角色养成计算帮助"],
+        keywords: ["星铁", "角色", "养成", "材料", "计算", "帮助"],
+        runtimeAliases: GENSHIN_RUNTIME_ALIASES,
+      },
+      {
+        id: "starrail.announcements",
+        description: "查看星铁官方公告和资讯",
+        command: "#星铁公告",
+        intentExamples: ["看看星铁最新公告", "星穹铁道最近有什么资讯"],
+        keywords: ["星铁", "星穹铁道", "官方", "公告", "资讯", "活动"],
+        runtimeAliases: GENSHIN_RUNTIME_ALIASES,
+      },
+      {
+        id: "starrail.redemption_codes",
+        description: "查看星铁前瞻直播兑换码",
+        command: "*兑换码",
+        intentExamples: ["星铁前瞻兑换码", "看看星穹铁道直播兑换码"],
+        keywords: ["星铁", "星穹铁道", "前瞻", "直播", "兑换码", "礼包码"],
+        runtimeAliases: GENSHIN_RUNTIME_ALIASES,
+      },
+    ],
+  ),
   fixedCommand({
     id: "miao.genshin_calendar",
     plugin: "miao",
@@ -462,6 +801,88 @@ const waves = [
     runtimeAliases: ["waves-plugin", "鸣潮-"],
   }),
   fixedCommand({
+    id: "waves.login",
+    plugin: "waves",
+    description: "启动鸣潮库街区网页登录流程；不会接收手机号、验证码或 Token 参数",
+    command: "~登录",
+    intentExamples: ["开始登录鸣潮账号", "现在打开鸣潮网页登录流程"],
+    keywords: ["鸣潮", "库街区", "开始", "登录", "网页登录", "账号"],
+    risk: "write",
+    autoExecute: false,
+    runtimeAliases: WAVES_RUNTIME_ALIASES,
+  }),
+  ...fixedCommandGroup(
+    {
+      plugin: "waves",
+      runtimeAliases: WAVES_RUNTIME_ALIASES,
+    },
+    [
+      {
+        id: "waves.task_list",
+        description: "查看鸣潮库街区每日任务状态和库洛币数量",
+        command: "~任务列表",
+        intentExamples: ["看看鸣潮每日任务状态", "查询库街区任务列表"],
+        keywords: ["鸣潮", "库街区", "每日任务", "任务列表", "状态", "库洛币"],
+      },
+      {
+        id: "waves.gacha_help",
+        description: "查看鸣潮抽卡记录获取和导入教程",
+        command: "~抽卡帮助",
+        intentExamples: ["鸣潮抽卡记录怎么导入", "看看鸣潮抽卡帮助"],
+        keywords: ["鸣潮", "抽卡", "唤取", "记录", "导入", "教程", "帮助"],
+      },
+      {
+        id: "waves.tower_schedule",
+        description: "查看鸣潮当期逆境深塔敌人和时间表",
+        command: "~当期深塔",
+        intentExamples: ["看看鸣潮当期深塔", "本期逆境深塔有什么敌人"],
+        keywords: ["鸣潮", "当期", "本期", "逆境深塔", "深塔", "敌人", "时间表"],
+      },
+      {
+        id: "waves.haixu",
+        description: "查看自己鸣潮账号的冥歌海墟挑战数据",
+        command: "~海墟",
+        intentExamples: ["看看我的鸣潮海墟", "查询冥歌海墟战绩"],
+        keywords: ["鸣潮", "冥歌海墟", "海墟", "战绩", "挑战数据"],
+      },
+      {
+        id: "waves.haixu_schedule",
+        description: "查看鸣潮当期冥歌海墟关卡和敌人信息",
+        command: "~当期海墟",
+        intentExamples: ["看看鸣潮本期海墟", "当期冥歌海墟有什么敌人"],
+        keywords: ["鸣潮", "当期", "本期", "冥歌海墟", "海墟", "关卡", "敌人"],
+      },
+      {
+        id: "waves.matrix",
+        description: "查看自己鸣潮账号的终焉矩阵挑战数据",
+        command: "~矩阵",
+        intentExamples: ["看看我的鸣潮矩阵", "查询终焉矩阵战绩"],
+        keywords: ["鸣潮", "终焉矩阵", "矩阵", "战绩", "挑战数据"],
+      },
+      {
+        id: "waves.matrix_schedule",
+        description: "查看鸣潮当期终焉矩阵关卡信息",
+        command: "~当期矩阵",
+        intentExamples: ["看看鸣潮本期矩阵", "当期终焉矩阵是什么"],
+        keywords: ["鸣潮", "当期", "本期", "终焉矩阵", "矩阵", "关卡"],
+      },
+      {
+        id: "waves.fotg_schedule",
+        description: "查看鸣潮当期千道门扉异想信息",
+        command: "~千道门扉",
+        intentExamples: ["看看鸣潮千道门扉", "本期千道门扉异想"],
+        keywords: ["鸣潮", "千道门扉", "千道", "门扉", "异想", "当期"],
+      },
+      {
+        id: "waves.echo_inventory",
+        description: "查看鸣潮账号的声骸仓库和声骸列表",
+        command: "~声骸仓库",
+        intentExamples: ["看看我的鸣潮声骸仓库", "列出我的声骸"],
+        keywords: ["鸣潮", "声骸", "仓库", "背包", "列表"],
+      },
+    ],
+  ),
+  fixedCommand({
     id: "waves.sanity",
     plugin: "waves",
     description: "查询鸣潮结晶波片、体力和日常数据",
@@ -681,6 +1102,44 @@ const waves = [
     autoExecute: false,
     runtimeAliases: ["waves-plugin", "鸣潮-"],
   }),
+  ...fixedCommandGroup(
+    {
+      plugin: "waves",
+      risk: "write",
+      autoExecute: false,
+      runtimeAliases: WAVES_RUNTIME_ALIASES,
+    },
+    [
+      {
+        id: "waves.daily_task",
+        description: "执行鸣潮库街区签到、浏览、点赞和分享每日任务",
+        command: "~每日任务",
+        intentExamples: ["帮我做鸣潮每日任务", "执行库街区任务"],
+        keywords: ["鸣潮", "库街区", "每日任务", "签到", "浏览", "点赞", "分享"],
+      },
+      {
+        id: "waves.disable_auto_sign",
+        description: "关闭鸣潮自动签到；该操作会修改用户设置",
+        command: "~关闭自动签到",
+        intentExamples: ["关闭鸣潮自动签到", "以后不要自动签鸣潮"],
+        keywords: ["鸣潮", "关闭", "取消", "自动", "签到"],
+      },
+      {
+        id: "waves.enable_auto_task",
+        description: "开启鸣潮库街区自动任务；该操作会修改用户设置",
+        command: "~开启自动任务",
+        intentExamples: ["开启鸣潮自动任务", "每天自动做库街区任务"],
+        keywords: ["鸣潮", "开启", "自动", "每日任务", "库街区"],
+      },
+      {
+        id: "waves.disable_auto_task",
+        description: "关闭鸣潮库街区自动任务；该操作会修改用户设置",
+        command: "~关闭自动任务",
+        intentExamples: ["关闭鸣潮自动任务", "不要再自动做库街区任务"],
+        keywords: ["鸣潮", "关闭", "取消", "自动", "每日任务", "库街区"],
+      },
+    ],
+  ),
 ]
 
 // waves-plugin 的全部预设只服务于鸣潮。统一标注后，角色白名单和显式游戏名
@@ -814,6 +1273,51 @@ const xiaoyao = [
     runtimeRuleOptional: true,
     games: ["genshin"],
   }),
+  fixedCommand({
+    id: "xiaoyao.currency_status",
+    plugin: "xiaoyao",
+    description: "查看米游币签到状态和当前米游币数量",
+    command: "#米游币查询",
+    intentExamples: ["看看我的米游币", "查询米游币签到状态"],
+    keywords: ["米游社", "米游币", "米币", "签到", "状态", "数量", "查询"],
+    runtimeAliases: XIAOYAO_RUNTIME_ALIASES,
+    runtimeRuleOptional: true,
+  }),
+  ...fixedCommandGroup(
+    {
+      plugin: "xiaoyao",
+      risk: "write",
+      autoExecute: false,
+      runtimeAliases: XIAOYAO_RUNTIME_ALIASES,
+      runtimeRuleOptional: true,
+    },
+    [
+      {
+        id: "xiaoyao.genshin_sign",
+        description: "执行一次米游社原神游戏签到",
+        command: "#原神签到",
+        intentExamples: ["帮我原神签到", "执行米游社原神签到"],
+        keywords: ["原神", "米游社", "签到", "游戏签到"],
+        games: ["genshin"],
+      },
+      {
+        id: "xiaoyao.starrail_sign",
+        description: "执行一次米游社星铁游戏签到",
+        command: "#星铁签到",
+        intentExamples: ["帮我星铁签到", "执行米游社星穹铁道签到"],
+        keywords: ["星铁", "星穹铁道", "米游社", "签到", "游戏签到"],
+        games: ["starrail"],
+      },
+      {
+        id: "xiaoyao.zzz_sign",
+        description: "执行一次米游社绝区零游戏签到",
+        command: "#绝区零签到",
+        intentExamples: ["帮我绝区零签到", "执行米游社绝区零签到"],
+        keywords: ["绝区零", "米游社", "签到", "游戏签到"],
+        games: ["zzz"],
+      },
+    ],
+  ),
 ]
 
 export const PRESET_COMMANDS = { miao, waves, xiaoyao }
@@ -860,6 +1364,7 @@ export function createCustomCandidate(input) {
 export {
   cleanEntity,
   cleanEnum,
+  cleanGameUid,
   escapeRegExp,
   gamesFromContext,
   fixedCommand,

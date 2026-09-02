@@ -46,11 +46,11 @@
 
 | 插件 | 预设能力 |
 | --- | --- |
-| [miao-plugin](https://github.com/yoimiya-kokomi/miao-plugin) | 帮助、原神/星铁/绝区零日历、今日素材、角色面板、练度、抽卡记录、持有率、深渊/剧诗/危战统计 |
-| [Yunzai-genshin](https://github.com/TimeRainStarSky/Yunzai-genshin) | 原神角色攻略图（`#角色攻略`） |
-| [StarRail-plugin](https://github.com/TsukinaKasumi/StarRail-plugin) | 星铁角色攻略图（`*角色攻略`，可选安装） |
-| [waves-plugin](https://github.com/ziyiLike/waves-plugin) | 帮助、登录教程、体力、卡片、探索度、挑战、深塔、角色面板/攻略/图鉴、日历、公告、抽卡记录、数据坞、练度、签到记录、兑换码、星声、持有率 |
-| [xiaoyao-cvs-plugin](https://github.com/ctrlcvs/xiaoyao-cvs-plugin) | 帮助、版本、体力、图鉴、地图位置、米游社绑定教程、扫码登录 |
+| [miao-plugin](https://github.com/yoimiya-kokomi/miao-plugin) | 帮助、版本、面板帮助、原神/星铁/绝区零日历、今日素材、角色面板、练度、抽卡记录、持有率、深渊/剧诗/危战统计 |
+| [Yunzai-genshin](https://github.com/TimeRainStarSky/Yunzai-genshin) | 三个游戏的 UID 绑定/查看；原神角色、探索、深渊、剧诗、札记、养成帮助、公告、兑换码和攻略；星铁/绝区零公告、兑换码及绝区零体力 |
+| [StarRail-plugin](https://github.com/TsukinaKasumi/StarRail-plugin) | 帮助、体力、收入、卡片、在线时长、跃迁记录、挑战总览、模拟/差分宇宙、强度榜和角色攻略 |
+| [waves-plugin](https://github.com/ziyiLike/waves-plugin) | 帮助与安全登录入口、体力、卡片、探索、挑战、深塔/海墟/矩阵/千道门扉、声骸仓库、角色资料、日历、公告、抽卡、任务、签到及自动任务设置 |
+| [xiaoyao-cvs-plugin](https://github.com/ctrlcvs/xiaoyao-cvs-plugin) | 帮助、版本、体力、图鉴、地图位置、米游社教程、扫码登录、三个游戏的签到及米游币查询 |
 
 喵喵角色卡上的“攻略”按钮实际会把 `#角色攻略` 或 `*角色攻略` 交给上述
 攻略插件，并不是 miao-plugin 自己处理。aiEnhance-plugin 会使用相同命令，
@@ -66,9 +66,13 @@
 先确定角色归属，再在后台获取攻略图。模型只允许依据图中清晰可见的内容回答；
 图片没有覆盖问题、文字无法辨认或置信度不足时，不会用模型记忆硬猜。
 
-鸣潮签到、开启自动签到和米游社扫码登录属于写操作，只会给出按钮确认，不会
-自动执行。没有进入显式预设目录的命令仍可按原插件的准确命令使用，但不会由
-AI 猜测后执行。
+游戏 UID 绑定、网页登录、签到、社区每日任务、自动任务设置和米游社扫码登录
+属于写操作，只会给出按钮确认，不会自动执行。没有进入显式预设目录的命令仍
+可按原插件的准确命令使用，但不会由 AI 猜测后执行。
+
+命令审计不会把上游的每条正则都暴露给模型。以下高风险入口有意排除：Cookie、
+Token、手机号与验证码、抽卡链接等凭据输入/查看，充值或消费记录，解绑/删除，
+批量任务，以及更新、配置和主人专用管理命令。
 
 ### 角色白名单
 
@@ -423,10 +427,10 @@ routing:
 
 还可以通过 `commands.autoExecuteAllowlist` 缩小允许自动执行的候选范围。
 
-从上一版本升级且从未修改过默认自动执行白名单时，插件会自动补充
-`genshin.guide` 和 `starrail.guide`。自定义过
-`commands.autoExecuteAllowlist` 的配置不会被改动，需要按需手动追加；也可以将
-`commands.migrateLegacyAllowlist` 设为 `false`，完全关闭该兼容迁移。
+从旧版本升级且从未修改过默认自动执行白名单时，插件会自动补充后来新增的安全
+只读候选。自定义过 `commands.autoExecuteAllowlist` 的配置不会被改动，需要按需
+手动追加；也可以将 `commands.migrateLegacyAllowlist` 设为 `false`，完全关闭该
+兼容迁移。
 
 ## 使用方法
 
@@ -437,6 +441,8 @@ routing:
 @机器人 图中有什么内容（同时发送图片）
 @机器人 这个是什么（引用一条图片消息）
 @机器人 看看我的鸣潮体力
+@机器人 看看本期鸣潮海墟
+@机器人 看看星铁体力
 @机器人 胡桃的面板怎么样
 @机器人 能给我看下遐蝶的面板吗
 @机器人 给我木偶的攻略
@@ -447,6 +453,9 @@ routing:
 @机器人 我要执行原神扫码登录
 @机器人 星铁最近有什么活动
 @机器人 琉璃袋在哪里
+@机器人 我怎么绑定原神
+@机器人 我的绝区零 UID 是多少
+@机器人 帮我原神签到
 ```
 
 ### 私聊
@@ -480,8 +489,8 @@ routing:
 
 1. Yunzai 先按正常优先级调用已有插件；
 2. 没有插件处理时，aiEnhance-plugin 先用角色白名单确定游戏归属；
-3. 本地排除跨游戏候选，再召回少量相关命令；
-4. 模型只能返回 `chat`、`clarify` 或某个已提供的 `candidateId`；
+3. 本地排除跨游戏候选，把完整的兼容命令目录和优先候选一起提供给模型；
+4. 模型会比较完整目录，但只能返回 `chat`、`clarify` 或某个已提供的 `candidateId`；
 5. 本地代码校验参数并根据受限模板生成命令；
 6. 安全策略检查风险、白名单、置信度、召回分数和目标插件规则；
 7. 满足自动执行条件时，带防递归标记重新交给 Yunzai 调度器。
@@ -649,10 +658,10 @@ pnpm run verify
 | --- | --- |
 | TRSS-Yunzai | `a3d75d5` |
 | Yunzai-QQBot-Plugin | `60a2e87` |
-| miao-plugin | `46790f0` |
-| Yunzai-genshin | `a48a571` |
-| StarRail-plugin | `e1ecd66` |
-| waves-plugin | `d0c5255` |
+| miao-plugin | `1eaef54` |
+| Yunzai-genshin | `4a2e1f` |
+| StarRail-plugin | `090e411` |
+| waves-plugin | `64f24d` |
 | xiaoyao-cvs-plugin | `e7ab3e8` |
 | ZZZ-Plugin（仅角色归属预设） | `7bd0086` |
 
