@@ -16,7 +16,6 @@ function fixedCandidateSuggestion(candidateId, catalog) {
   const candidate = catalog.find(candidateId)
   if (
     !candidate ||
-    ["sensitive", "admin"].includes(candidate.risk) ||
     candidate.slots.some(slot => slot.required)
   ) {
     return null

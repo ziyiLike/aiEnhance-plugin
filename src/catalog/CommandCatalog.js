@@ -124,21 +124,35 @@ function scoreCandidate(
   const queryGrams = ngrams(query)
   let bestSimilarity = 0
   const phrases = [
-    candidate.description,
-    ...candidate.intentExamples,
-    ...candidate.commandExamples,
+    { value: candidate.description, kind: "description" },
+    ...candidate.intentExamples.map(value => ({ value, kind: "intent" })),
+    ...candidate.commandExamples.map(value => ({ value, kind: "command" })),
   ]
+  const characterNames = new Set(
+    (context.characters || [])
+      .flatMap(character => [character.character, character.matched])
+      .map(normalizeText)
+      .filter(Boolean),
+  )
 
   for (const phrase of phrases) {
-    const normalizedPhrase = normalizeText(phrase)
+    const normalizedPhrase = normalizeText(phrase.value)
     if (!normalizedPhrase) continue
+    // “#纳西妲”这类只有角色名的宽泛命令，不能因为用户提到了角色就压过
+    // “纳西妲攻略/面板”等更明确的功能意图。
+    const isBareCharacterCommand =
+      phrase.kind === "command" && characterNames.has(normalizedPhrase)
     if (
-      normalizedQuery === normalizedPhrase ||
-      (normalizedPhrase.length >= 3 && normalizedQuery.includes(normalizedPhrase))
+      !isBareCharacterCommand &&
+      (normalizedQuery === normalizedPhrase ||
+        (normalizedPhrase.length >= 3 && normalizedQuery.includes(normalizedPhrase)))
     ) {
       bestSimilarity = Math.max(bestSimilarity, 1)
     } else {
-      bestSimilarity = Math.max(bestSimilarity, jaccard(queryGrams, ngrams(phrase)))
+      bestSimilarity = Math.max(
+        bestSimilarity,
+        jaccard(queryGrams, ngrams(phrase.value)),
+      )
     }
   }
 
@@ -251,6 +265,7 @@ export class CommandCatalog {
       .sort(
         (left, right) =>
           right.score - left.score ||
+          right.matchedTerms.length - left.matchedTerms.length ||
           left.candidate.id.localeCompare(right.candidate.id),
       )
   }
@@ -268,7 +283,10 @@ export class CommandCatalog {
     try {
       const slots = slotsToObject(candidate, slotList)
       const command = String(candidate.build(slots, options) || "").trim()
-      if (!command || command.length > 200 || /[\r\n]/.test(command)) {
+      const maxCommandLength = candidate.maxCommandLength || 200
+      const hasForbiddenNewline =
+        candidate.allowNewlines !== true && /[\r\n]/.test(command)
+      if (!command || command.length > maxCommandLength || hasForbiddenNewline) {
         return { ok: false, error: "生成的命令无效" }
       }
       if (!regexMatches(candidate.validateCommand, command)) {

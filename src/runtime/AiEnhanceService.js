@@ -423,17 +423,6 @@ export class AiEnhanceService {
         queryContext,
       })
 
-      if (decision.action === "deny") {
-        const message = "这个功能涉及敏感或管理操作，请使用原插件的准确命令手动执行。"
-        await sendText(event, message, config.reply)
-        this.audit(event, {
-          decision: "denied",
-          candidateId: built.candidate.id,
-          reason: decision.reason,
-        }, config)
-        return true
-      }
-
       if (decision.action === "clarify") {
         const message =
           decision.reason === "candidate_ranked_below_alternative"

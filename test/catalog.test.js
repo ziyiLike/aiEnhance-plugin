@@ -32,6 +32,18 @@ test("catalog retrieves the expected plugin intents from natural Chinese", () =>
     "waves.haixu_schedule",
   )
   assert.equal(value.search("帮我原神签到")[0].candidate.id, "xiaoyao.genshin_sign")
+  assert.equal(
+    value.search("更新一下我的原神抽卡记录")[0].candidate.id,
+    "xiaoyao.gacha_update",
+  )
+  assert.equal(
+    value.search("更新一下我的星铁抽卡记录")[0].candidate.id,
+    "starrail.gacha_update",
+  )
+  assert.equal(
+    value.search("更新一下我的鸣潮抽卡记录")[0].candidate.id,
+    "waves.gacha_update",
+  )
   const genshinSign = value.rank("原神怎么签到")
   assert.equal(genshinSign[0].candidate.id, "xiaoyao.genshin_sign")
   assert.ok(
@@ -154,6 +166,31 @@ test("catalog builds parameterized commands locally", () => {
 
   assert.equal(value.buildCommand("starrail.sanity").command, "*体力")
   assert.equal(value.buildCommand("waves.haixu_schedule").command, "~当期海墟")
+
+  for (const [id, command] of [
+    ["miao.profile_refresh", "#更新面板"],
+    ["starrail.gacha_update", "*更新抽卡记录"],
+    ["waves.gacha_update", "~更新抽卡记录"],
+    ["xiaoyao.gacha_update", "#更新抽卡记录"],
+  ]) {
+    const update = value.buildCommand(id)
+    assert.equal(update.command, command)
+    assert.equal(update.candidate.risk, "write")
+    assert.equal(update.candidate.autoExecute, false)
+  }
+
+  const payload = JSON.stringify(
+    { playerId: "123456789", recordId: "x".repeat(240) },
+    null,
+    2,
+  )
+  const wavesPayload = value.buildCommand("waves.gacha_payload", [
+    { name: "payload", value: payload },
+  ])
+  assert.equal(wavesPayload.ok, true)
+  assert.equal(wavesPayload.command, `~抽卡统计${payload}`)
+  assert.equal(wavesPayload.command.length > 200, true)
+  assert.equal(wavesPayload.candidate.risk, "sensitive")
 })
 
 test("catalog rejects missing, unknown, and command-injection-like slots", () => {

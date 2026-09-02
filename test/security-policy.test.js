@@ -89,6 +89,28 @@ test("PolicyEngine requires confirmation for side effects even at high confidenc
   assert.equal(decision.reason, "side_effect_requires_confirmation")
 })
 
+test("PolicyEngine keeps sensitive and owner commands available but never silent", () => {
+  const config = cloneDefaults()
+  const catalog = new CommandCatalog()
+  catalog.configure(DEFAULT_CONFIG.commands)
+  const policy = new PolicyEngine()
+
+  for (const [id, reason] of [
+    ["genshin.cookie_show", "sensitive_operation_requires_confirmation"],
+    ["miao.plugin_force_update", "admin_operation_requires_confirmation"],
+  ]) {
+    const candidate = catalog.find(id)
+    const decision = policy.decide({
+      route: { candidateId: id, confidence: 1 },
+      candidate,
+      searchResults: [{ candidate, score: 1 }],
+      config,
+    })
+    assert.equal(decision.action, "confirm")
+    assert.equal(decision.reason, reason)
+  }
+})
+
 test("selectedRetrievalStats reports negative margin when model skips the top result", () => {
   const catalog = new CommandCatalog()
   catalog.configure(DEFAULT_CONFIG.commands)

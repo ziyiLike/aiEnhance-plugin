@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url"
 import YAML from "yaml"
 import { DEFAULT_CONFIG } from "../src/config/defaults.js"
 import { CommandCatalog, regexMatches } from "../src/catalog/CommandCatalog.js"
+import {
+  AUDITED_DYNAMIC_PATH_COUNT,
+  AUDITED_STATIC_RULE_COUNT,
+  UPSTREAM_COMMAND_AUDIT,
+} from "../src/catalog/upstreamAudit.js"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const excludedDirectories = new Set([".git", "node_modules", "coverage"])
@@ -99,6 +104,8 @@ if (yamlConfig && JSON.stringify(yamlConfig) !== JSON.stringify(DEFAULT_CONFIG))
 const catalog = new CommandCatalog()
 catalog.configure(DEFAULT_CONFIG.commands)
 const seenIds = new Set()
+const auditedCandidateIds = new Set()
+const auditedSources = new Set()
 
 for (const candidate of catalog.candidates) {
   if (seenIds.has(candidate.id)) failures.push(`重复候选 ID：${candidate.id}`)
@@ -112,6 +119,13 @@ for (const candidate of catalog.candidates) {
       failures.push(`${candidate.id} 的示例命令未通过模板校验：${example}`)
     }
   }
+
+  if (!candidate.slots.some(slot => slot.required)) {
+    const built = catalog.buildCommand(candidate.id)
+    if (!built.ok) {
+      failures.push(`${candidate.id} 无需必填参数但无法生成默认命令：${built.error}`)
+    }
+  }
 }
 
 for (const id of DEFAULT_CONFIG.commands.autoExecuteAllowlist) {
@@ -123,11 +137,81 @@ for (const id of DEFAULT_CONFIG.commands.autoExecuteAllowlist) {
   }
 }
 
+if (AUDITED_STATIC_RULE_COUNT !== 353) {
+  failures.push(
+    `上游静态规则审计总数应为 353，实际为 ${AUDITED_STATIC_RULE_COUNT}`,
+  )
+}
+
+if (AUDITED_DYNAMIC_PATH_COUNT !== 5) {
+  failures.push(
+    `上游动态入口审计总数应为 5，实际为 ${AUDITED_DYNAMIC_PATH_COUNT}`,
+  )
+}
+
+for (const [plugin, audit] of Object.entries(UPSTREAM_COMMAND_AUDIT)) {
+  if (!audit.repository || !audit.commit) {
+    failures.push(`${plugin} 的上游审计缺少仓库或提交版本`)
+  }
+
+  const fileRuleCount = audit.files.reduce((total, entry) => {
+    const sourceKey = `${plugin}:${entry.source}`
+    if (auditedSources.has(sourceKey)) {
+      failures.push(`上游审计包含重复源码文件：${sourceKey}`)
+    }
+    auditedSources.add(sourceKey)
+
+    if (!Number.isInteger(entry.rules) || entry.rules <= 0) {
+      failures.push(`${sourceKey} 的静态规则数无效`)
+    }
+    if (!entry.coveredBy?.length) {
+      failures.push(`${sourceKey} 没有映射任何命令候选`)
+    }
+
+    for (const id of entry.coveredBy || []) {
+      auditedCandidateIds.add(id)
+      if (!catalog.find(id)) {
+        failures.push(`${sourceKey} 映射了不存在的候选：${id}`)
+      }
+    }
+    return total + entry.rules
+  }, 0)
+
+  if (fileRuleCount !== audit.staticRuleCount) {
+    failures.push(
+      `${plugin} 的逐文件静态规则数为 ${fileRuleCount}，与审计声明 ${audit.staticRuleCount} 不一致`,
+    )
+  }
+
+  for (const entry of audit.dynamicPaths || []) {
+    const sourceKey = `${plugin}:${entry.source}`
+    if (auditedSources.has(sourceKey)) {
+      failures.push(`上游审计包含重复动态入口：${sourceKey}`)
+    }
+    auditedSources.add(sourceKey)
+    if (!entry.coveredBy?.length) {
+      failures.push(`${sourceKey} 没有映射任何命令候选`)
+    }
+    for (const id of entry.coveredBy || []) {
+      auditedCandidateIds.add(id)
+      if (!catalog.find(id)) {
+        failures.push(`${sourceKey} 映射了不存在的候选：${id}`)
+      }
+    }
+  }
+}
+
+for (const candidate of catalog.candidates) {
+  if (!auditedCandidateIds.has(candidate.id)) {
+    failures.push(`内置候选没有上游规则映射：${candidate.id}`)
+  }
+}
+
 if (failures.length) {
   console.error(failures.join("\n\n"))
   process.exit(1)
 }
 
 console.log(
-  `检查通过：${javascriptFiles.length} 个 JavaScript 文件，${catalog.size} 个内置命令候选。`,
+  `检查通过：${javascriptFiles.length} 个 JavaScript 文件，${catalog.size} 个内置命令候选，${AUDITED_STATIC_RULE_COUNT} 条上游静态规则，${AUDITED_DYNAMIC_PATH_COUNT} 个动态入口。`,
 )

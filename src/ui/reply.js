@@ -50,14 +50,20 @@ export async function sendConfirmation(
     .replace(/[。！？]+$/u, "")
   const requiresCare =
     decision?.reason === "side_effect_requires_confirmation" ||
-    candidate.risk === "write"
+    ["write", "sensitive", "admin"].includes(candidate.risk)
   const needsExplicitConfirmation = [
     "auto_execute_disabled",
     "candidate_requires_confirmation",
     "candidate_not_allowlisted",
   ].includes(decision?.reason)
+  const careReason =
+    candidate.risk === "sensitive"
+      ? "涉及账号敏感信息"
+      : candidate.risk === "admin"
+        ? "需要主人或群管理权限"
+        : "会更改账号或功能状态"
   const introduction = requiresCare
-    ? `「${description}」会更改账号或功能状态。为避免误操作，请确认后再继续。`
+    ? `「${description}」${careReason}。为避免误操作，请确认后再继续。`
     : needsExplicitConfirmation
       ? `我理解你是想${description}。这个功能需要你确认后才能继续。`
       : `我理解你是想${description}。如果没理解错，点一下确认我就帮你处理。`
@@ -86,7 +92,8 @@ export async function sendClarification(
       /[；;。！？\r\n]/u,
       1,
     )[0]
-    return `- ${item.command}${description ? `：${description}` : ""}`
+    // `- #命令` 会被 QQ Markdown 解析成列表内标题，导致整行异常加粗。
+    return `· ${item.command}${description ? `：${description}` : ""}`
   })
   const outputText = [text, ...commandLines].join("\n")
 

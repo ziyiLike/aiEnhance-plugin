@@ -1,4 +1,6 @@
-const NEVER_EXECUTE_RISKS = new Set(["sensitive", "admin"])
+// 高风险与主人命令仍进入完整候选目录，但永远不能由自然语言静默执行。
+// 最终命令会先展示给用户确认，真实权限继续由对应上游插件校验。
+const CONFIRM_ONLY_RISKS = new Set(["sensitive", "admin"])
 
 function selectedRetrievalStats(candidateId, searchResults) {
   const selected = searchResults.find(result => result.candidate.id === candidateId)
@@ -22,6 +24,9 @@ function autoExecuteBlockReason({
   config,
 }) {
   if (candidate.risk === "write") return "side_effect_requires_confirmation"
+  if (CONFIRM_ONLY_RISKS.has(candidate.risk)) {
+    return `${candidate.risk}_operation_requires_confirmation`
+  }
   if (candidate.risk !== "read" || candidate.autoExecute !== true) {
     return "candidate_requires_confirmation"
   }
@@ -44,10 +49,6 @@ function autoExecuteBlockReason({
 export class PolicyEngine {
   decide({ route, candidate, searchResults, config, queryContext }) {
     if (!candidate) return { action: "clarify", reason: "candidate_missing" }
-
-    if (NEVER_EXECUTE_RISKS.has(candidate.risk)) {
-      return { action: "deny", reason: `risk_${candidate.risk}` }
-    }
 
     if (queryContext?.conflict) {
       return { action: "clarify", reason: "query_game_conflict" }
@@ -107,7 +108,7 @@ export class PolicyEngine {
 }
 
 export {
-  NEVER_EXECUTE_RISKS,
+  CONFIRM_ONLY_RISKS,
   selectedRetrievalStats,
   autoExecuteBlockReason,
 }

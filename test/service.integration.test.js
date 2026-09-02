@@ -15,6 +15,7 @@ import { REPLAY_SYMBOL } from "../src/runtime/SafeDispatcher.js"
 import {
   BUTTON_LABEL_MAX_LENGTH,
   compactButtonLabel,
+  sendClarification,
 } from "../src/ui/reply.js"
 
 function event(overrides = {}) {
@@ -156,6 +157,28 @@ test("button labels keep a complete semantic clause within the adapter limit", (
   const truncated = compactButtonLabel("这是一个没有自然停顿而且明显超过限制的按钮说明文案")
   assert.equal([...truncated].length, BUTTON_LABEL_MAX_LENGTH)
   assert.match(truncated, /…$/)
+})
+
+test("clarification commands cannot become QQ Markdown headings", async () => {
+  const currentEvent = event()
+
+  await sendClarification(currentEvent, {
+    message: "你想更新的是什么呢？",
+    suggestions: [
+      {
+        command: "#喵喵抽卡记录",
+        description: "查看原神或星铁的喵喵抽卡记录或统计",
+      },
+    ],
+    segment: null,
+    config: { quote: false, useButtons: false },
+  })
+
+  assert.equal(
+    currentEvent.replies[0],
+    "你想更新的是什么呢？\n· #喵喵抽卡记录：查看原神或星铁的喵喵抽卡记录或统计",
+  )
+  assert.doesNotMatch(currentEvent.replies[0], /^- #/mu)
 })
 
 test("API error summaries do not log provider-returned request text", () => {
@@ -415,6 +438,8 @@ test("router receives the complete compatible command catalog beyond local topK"
       assert.equal(likelyIds.length, 1)
       assert.equal(likelyIds.includes("xiaoyao.account_help"), false)
       assert.equal(offeredIds.includes("xiaoyao.account_help"), true)
+      assert.equal(offeredIds.includes("miao.plugin_force_update"), true)
+      assert.equal(offeredIds.includes("genshin.cookie_show"), true)
       assert.ok(offeredIds.length > likelyIds.length)
       return {
         ok: true,
