@@ -8,6 +8,10 @@ import {
   createReplayEvent,
   isReplayedEvent,
 } from "../src/runtime/SafeDispatcher.js"
+import {
+  consumeAiFallbackEligibility,
+  markAiFallbackEligible,
+} from "../src/runtime/FallbackGuard.js"
 import { createLogger } from "../src/utils/logger.js"
 
 test("plugin logger adds its prefix exactly once", () => {
@@ -23,6 +27,16 @@ test("plugin logger adds its prefix exactly once", () => {
     "[aiEnhance-plugin] 普通警告",
     "[aiEnhance-plugin] 已带前缀",
   ])
+})
+
+test("AI fallback eligibility is event-scoped and can only be consumed once", () => {
+  const acceptedByUpstream = {}
+  const unhandled = {}
+
+  assert.equal(consumeAiFallbackEligibility(acceptedByUpstream), false)
+  assert.equal(markAiFallbackEligible(unhandled), true)
+  assert.equal(consumeAiFallbackEligibility(unhandled), true)
+  assert.equal(consumeAiFallbackEligibility(unhandled), false)
 })
 
 test("RequestGate enforces in-flight, per-window, and global limits", () => {

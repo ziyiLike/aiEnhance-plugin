@@ -73,4 +73,17 @@ test("plugin index imports from a real Yunzai plugins/<name> directory layout", 
   assert.equal(entry.name, "aiEnhance-plugin 兜底")
   assert.equal(entry.priority, 999_999_999)
   assert.equal(entry.rule[0].reg, "^[\\s\\S]*$")
+
+  const acceptedByUpstream = {}
+  entry.e = acceptedByUpstream
+  assert.equal(await entry.handle(), false)
+
+  const unhandled = {}
+  assert.equal(entry.accept(unhandled), false)
+  const fallbackGuard = await import(
+    pathToFileURL(
+      path.join(pluginDirectory, "src", "runtime", "FallbackGuard.js"),
+    ).href
+  )
+  assert.equal(fallbackGuard.consumeAiFallbackEligibility(unhandled), true)
 })

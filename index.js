@@ -3,6 +3,10 @@ import { fileURLToPath } from "node:url"
 import plugin from "../../lib/plugins/plugin.js"
 import PluginsLoader from "../../lib/plugins/loader.js"
 import { createRuntime } from "./src/runtime/createRuntime.js"
+import {
+  consumeAiFallbackEligibility,
+  markAiFallbackEligible,
+} from "./src/runtime/FallbackGuard.js"
 
 const pluginRoot = path.dirname(fileURLToPath(import.meta.url))
 const MEMORY_TURNS_PATTERN = /^#[Aa][Ii]配置轮次(?:\s+(\d+))?\s*$/
@@ -166,7 +170,16 @@ export class AiEnhanceEntry extends plugin {
     })
   }
 
+  accept(event) {
+    // TRSS-Yunzai 会先依次执行 accept()：前置插件返回 true 后，这里不会被
+    // 调用；但它之后仍会继续匹配普通 rule。只有 accept 链确实走到末尾，
+    // 才允许下面的通配规则调用 AI。
+    markAiFallbackEligible(event)
+    return false
+  }
+
   async handle() {
+    if (!consumeAiFallbackEligibility(this.e)) return false
     return getRuntime().service.handle(this.e)
   }
 }
