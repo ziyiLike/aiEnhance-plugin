@@ -249,7 +249,7 @@ export function decisionClarification(decision, candidate) {
     return "这个角色名在多个游戏中都存在，请补充原神、鸣潮、星铁或绝区零。"
   }
   if (decision.reason === "candidate_ranked_below_alternative") {
-    return "我找到了几个相近的功能，已经把直接操作排在前面，请选择你实际想用的一个。"
+    return "可以，直接用下面这些命令："
   }
   return `我还不完全确定。你是想执行「${candidate.description}」吗？`
 }

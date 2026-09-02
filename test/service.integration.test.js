@@ -12,6 +12,10 @@ import {
   extractText,
 } from "../src/runtime/AiEnhanceService.js"
 import { REPLAY_SYMBOL } from "../src/runtime/SafeDispatcher.js"
+import {
+  BUTTON_LABEL_MAX_LENGTH,
+  compactButtonLabel,
+} from "../src/ui/reply.js"
 
 function event(overrides = {}) {
   const replies = []
@@ -143,6 +147,16 @@ function serviceFixture(
 
   return { service, calls, config, configManager, pluginLoader, dispatcher }
 }
+
+test("button labels keep a complete semantic clause within the adapter limit", () => {
+  assert.equal(
+    compactButtonLabel("查看米游社账号绑定与签到配置教程；不会提交凭据"),
+    "查看米游社账号绑定与签到配置教程",
+  )
+  const truncated = compactButtonLabel("这是一个没有自然停顿而且明显超过限制的按钮说明文案")
+  assert.equal([...truncated].length, BUTTON_LABEL_MAX_LENGTH)
+  assert.match(truncated, /…$/)
+})
 
 test("API error summaries do not log provider-returned request text", () => {
   const error = new Error("provider echoed private user text")
@@ -840,9 +854,15 @@ test("game sign-in is offered before account help when the model guesses help", 
   assert.equal(await fixture.service.handle(currentEvent), true)
   assert.equal(fixture.calls.dispatch, 0)
   const reply = currentEvent.replies[0]
-  assert.match(reply[0], /直接操作排在前面/)
+  assert.match(reply[0], /直接用下面这些命令/)
+  assert.match(reply[0], /#原神签到/)
+  assert.match(reply[0], /#米游社帮助/)
   assert.deepEqual(
     reply[1].data.map(row => row[0].callback),
+    ["#原神签到", "#米游社帮助"],
+  )
+  assert.deepEqual(
+    reply[1].data.map(row => row[0].text),
     ["#原神签到", "#米游社帮助"],
   )
 })
@@ -1057,10 +1077,10 @@ test("confirmation uses a public QQ callback button when the adapter supports it
   assert.equal(await fixture.service.handle(currentEvent), true)
   const reply = currentEvent.replies[0]
   assert.ok(Array.isArray(reply))
+  assert.match(reply[0], /~签到/)
   assert.equal(reply[1].type, "button")
   assert.equal(reply[1].data[0][0].callback, "~签到")
-  assert.match(reply[1].data[0][0].text, /确认执行一次鸣潮库街区签到/)
-  assert.doesNotMatch(reply[1].data[0][0].text, /~签到/)
+  assert.equal(reply[1].data[0][0].text, "确认：~签到")
   assert.equal(Object.hasOwn(reply[1].data[0][0], "permission"), false)
 })
 

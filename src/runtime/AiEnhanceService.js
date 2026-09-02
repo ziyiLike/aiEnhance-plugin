@@ -512,8 +512,7 @@ export class AiEnhanceService {
         })
         if (suggestions.length > 1) {
           await sendClarification(event, {
-            message:
-              "我找到了几个相关功能，已经把直接操作排在前面，请选择你实际想用的一个。",
+            message: "可以，直接用下面这些命令：",
             suggestions,
             segment: this.segment,
             config: config.reply,

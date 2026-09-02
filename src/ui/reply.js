@@ -1,3 +1,14 @@
+export const BUTTON_LABEL_MAX_LENGTH = 18
+
+export function compactButtonLabel(value, maxLength = BUTTON_LABEL_MAX_LENGTH) {
+  const text = String(value || "").trim().replace(/\s+/g, " ")
+  const semanticClause = text.split(/[；;。！？\r\n]/u, 1)[0].trim() || text
+  const characters = [...semanticClause]
+  if (characters.length <= maxLength) return semanticClause
+  if (maxLength <= 1) return characters.slice(0, maxLength).join("")
+  return `${characters.slice(0, maxLength - 1).join("")}…`
+}
+
 function canUseButtons(segment, config) {
   return config.useButtons && typeof segment?.button === "function"
 }
@@ -56,13 +67,12 @@ export async function sendConfirmation(
     return sendText(event, fallbackText, config)
   }
 
-  const buttonLabel = `${requiresCare ? "确认" : "好的，"}${description}`.slice(
-    0,
-    32,
+  const buttonLabel = compactButtonLabel(
+    `${requiresCare ? "确认：" : "执行："}${command}`,
   )
   const button = buildButton(segment, command, buttonLabel)
   if (!button) return sendText(event, fallbackText, config)
-  return event.reply([introduction, button], Boolean(config.quote))
+  return event.reply([fallbackText, button], Boolean(config.quote))
 }
 
 export async function sendClarification(
@@ -71,10 +81,17 @@ export async function sendClarification(
 ) {
   const text = String(message || "我还不确定你想使用哪个功能，请再具体一点。")
   const buildable = suggestions.filter(item => item.command).slice(0, 5)
+  const commandLines = buildable.map(item => {
+    const description = String(item.description || "").split(
+      /[；;。！？\r\n]/u,
+      1,
+    )[0]
+    return `- ${item.command}${description ? `：${description}` : ""}`
+  })
+  const outputText = [text, ...commandLines].join("\n")
 
   if (!buildable.length || !canUseButtons(segment, config)) {
-    const lines = buildable.map(item => `- ${item.description}：${item.command}`)
-    return sendText(event, [text, ...lines].join("\n"), config)
+    return sendText(event, outputText, config)
   }
 
   const rows = []
@@ -82,7 +99,7 @@ export async function sendClarification(
     try {
       rows.push([
         {
-          text: item.description.slice(0, 18),
+          text: compactButtonLabel(item.command),
           callback: item.command,
         },
       ])
@@ -96,8 +113,8 @@ export async function sendClarification(
     buttons = segment.button(...rows)
   } catch {}
 
-  if (!buttons) return sendText(event, text, config)
-  return event.reply([text, buttons], Boolean(config.quote))
+  if (!buttons) return sendText(event, outputText, config)
+  return event.reply([outputText, buttons], Boolean(config.quote))
 }
 
 export async function sendKnowledgeAnswer(
@@ -115,7 +132,7 @@ export async function sendKnowledgeAnswer(
 
   const button =
     command && canUseButtons(segment, config)
-      ? buildButton(segment, command, label.slice(0, 32))
+      ? buildButton(segment, command, compactButtonLabel(label))
       : null
   const outputText =
     command && !button ? `${String(text)}\n命令：${command}` : String(text)
