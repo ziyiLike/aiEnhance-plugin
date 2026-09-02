@@ -71,6 +71,15 @@ export class PolicyEngine {
       }
     }
 
+    if (margin < 0) {
+      return {
+        action: "clarify",
+        reason: "candidate_ranked_below_alternative",
+        selectedScore,
+        margin,
+      }
+    }
+
     const blockReason = autoExecuteBlockReason({
       route,
       candidate,

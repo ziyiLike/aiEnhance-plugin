@@ -126,4 +126,6 @@ test("IntentRouter includes the full catalog and marks only local likely candida
   assert.ok(payload.candidates[0].examples.length > 0)
   assert.equal(Object.hasOwn(payload.candidates[1], "examples"), false)
   assert.deepEqual(payload.candidates[1].commandExamples, ["#完整教程"])
+  assert.equal(payload.candidates[0].kind, "operation")
+  assert.equal(payload.candidates[1].kind, "help")
 })

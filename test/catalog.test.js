@@ -32,6 +32,14 @@ test("catalog retrieves the expected plugin intents from natural Chinese", () =>
     "waves.haixu_schedule",
   )
   assert.equal(value.search("帮我原神签到")[0].candidate.id, "xiaoyao.genshin_sign")
+  const genshinSign = value.rank("原神怎么签到")
+  assert.equal(genshinSign[0].candidate.id, "xiaoyao.genshin_sign")
+  assert.ok(
+    genshinSign[0].score -
+      genshinSign.find(result => result.candidate.id === "xiaoyao.account_help")
+        .score >
+      0.15,
+  )
   assert.equal(value.search("我的绝区零 UID")[0].candidate.id, "zzz.show_uid")
   assert.equal(
     value.search("原神米游社怎么绑定")[0].candidate.id,

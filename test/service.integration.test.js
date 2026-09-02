@@ -806,6 +806,47 @@ test("binding help confirmation is conversational and hides routing internals", 
   )
 })
 
+test("game sign-in is offered before account help when the model guesses help", async () => {
+  const segment = {
+    button(...data) {
+      return { type: "button", data }
+    },
+  }
+  const fixture = serviceFixture(
+    async () => ({
+      ok: true,
+      route: {
+        mode: "command",
+        candidateId: "xiaoyao.account_help",
+        slots: [],
+        confidence: 0.99,
+        alternatives: [],
+        reply: "",
+      },
+      responseMeta: { model: "test-model" },
+    }),
+    {
+      segment,
+      configMutator(config) {
+        config.reply.useButtons = true
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "原神怎么签到",
+    raw_message: "原神怎么签到",
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  assert.equal(fixture.calls.dispatch, 0)
+  const reply = currentEvent.replies[0]
+  assert.match(reply[0], /直接操作排在前面/)
+  assert.deepEqual(
+    reply[1].data.map(row => row[0].callback),
+    ["#原神签到", "#米游社帮助"],
+  )
+})
+
 test("side-effecting command requires confirmation even at confidence 1", async () => {
   const fixture = serviceFixture(async () => ({
     ok: true,
@@ -893,6 +934,49 @@ test("clarify mode provides fixed command suggestions", async () => {
   assert.equal(fixture.calls.dispatch, 0)
   assert.match(String(currentEvent.replies[0]), /鸣潮体力/)
   assert.match(String(currentEvent.replies[0]), /~体力/)
+})
+
+test("clarification can render five model command alternatives", async () => {
+  const segment = {
+    button(...data) {
+      return { type: "button", data }
+    },
+  }
+  const fixture = serviceFixture(
+    async () => ({
+      ok: true,
+      route: {
+        mode: "clarify",
+        candidateId: null,
+        slots: [],
+        confidence: 0.5,
+        alternatives: [
+          { candidateId: "miao.genshin_calendar", confidence: 0.9 },
+          { candidateId: "genshin.announcements", confidence: 0.8 },
+          { candidateId: "genshin.redemption_codes", confidence: 0.7 },
+          { candidateId: "genshin.ledger", confidence: 0.6 },
+          { candidateId: "miao.profile_list", confidence: 0.5 },
+        ],
+        reply: "你想使用哪一个原神功能？",
+      },
+      responseMeta: { model: "test-model" },
+    }),
+    {
+      segment,
+      configMutator(config) {
+        config.reply.useButtons = true
+      },
+    },
+  )
+  const currentEvent = event({
+    msg: "原神有哪些功能",
+    raw_message: "原神有哪些功能",
+  })
+
+  assert.equal(await fixture.service.handle(currentEvent), true)
+  const rows = currentEvent.replies[0][1].data
+  assert.equal(rows.length, 5)
+  assert.equal(new Set(rows.map(row => row[0].callback)).size, 5)
 })
 
 test("missing required command slot triggers a follow-up question", async () => {

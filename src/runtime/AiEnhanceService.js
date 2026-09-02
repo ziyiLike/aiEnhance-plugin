@@ -8,11 +8,10 @@ import {
 import { extractImageSources } from "../media/ImageInput.js"
 import { sendConfirmation, sendClarification, sendText } from "../ui/reply.js"
 import {
+  commandSuggestions,
   contextualCharacterSuggestions,
   decisionClarification,
-  fixedSuggestions,
   hasCharacterCommandIntent,
-  mergeSuggestions,
   modelClarification,
 } from "../ui/suggestions.js"
 
@@ -335,10 +334,13 @@ export class AiEnhanceService {
       }
 
       if (route.mode === "clarify") {
-        const suggestions = mergeSuggestions(
-          contextualCharacterSuggestions(queryContext, text, this.catalog),
-          fixedSuggestions(searchResults, this.catalog),
-        )
+        const suggestions = commandSuggestions({
+          route,
+          context: queryContext,
+          text,
+          searchResults,
+          catalog: this.catalog,
+        })
         await sendClarification(event, {
           message: route.reply,
           suggestions,
@@ -365,10 +367,13 @@ export class AiEnhanceService {
         const message = "我没能把你的意思安全地对应到现有功能，请换一种更具体的说法。"
         await sendClarification(event, {
           message,
-          suggestions: mergeSuggestions(
-            contextualCharacterSuggestions(queryContext, text, this.catalog),
-            fixedSuggestions(searchResults, this.catalog),
-          ),
+          suggestions: commandSuggestions({
+            route,
+            context: queryContext,
+            text,
+            searchResults,
+            catalog: this.catalog,
+          }),
           segment: this.segment,
           config: config.reply,
         })
@@ -386,10 +391,13 @@ export class AiEnhanceService {
         const message = modelClarification(route, built.error)
         await sendClarification(event, {
           message,
-          suggestions: mergeSuggestions(
-            contextualCharacterSuggestions(queryContext, text, this.catalog),
-            fixedSuggestions(searchResults, this.catalog),
-          ),
+          suggestions: commandSuggestions({
+            route,
+            context: queryContext,
+            text,
+            searchResults,
+            catalog: this.catalog,
+          }),
           segment: this.segment,
           config: config.reply,
         })
@@ -428,23 +436,27 @@ export class AiEnhanceService {
 
       if (decision.action === "clarify") {
         const message =
-          route.reply || decisionClarification(decision, built.candidate)
+          decision.reason === "candidate_ranked_below_alternative"
+            ? decisionClarification(decision, built.candidate)
+            : route.reply || decisionClarification(decision, built.candidate)
         const builtSuggestion = {
           description: built.candidate.description,
           command: built.command,
         }
+        const omitPrimary = [
+          "query_game_conflict",
+          "query_character_ambiguous",
+        ].includes(decision.reason)
         await sendClarification(event, {
           message,
-          suggestions:
-            ["query_game_conflict", "query_character_ambiguous"].includes(
-              decision.reason,
-            )
-              ? fixedSuggestions(searchResults, this.catalog)
-              : mergeSuggestions(
-                  [builtSuggestion],
-                  contextualCharacterSuggestions(queryContext, text, this.catalog),
-                  fixedSuggestions(searchResults, this.catalog),
-                ),
+          suggestions: commandSuggestions({
+            route,
+            context: queryContext,
+            text,
+            searchResults,
+            catalog: this.catalog,
+            primary: omitPrimary ? [] : [builtSuggestion],
+          }),
           segment: this.segment,
           config: config.reply,
         })
@@ -484,13 +496,37 @@ export class AiEnhanceService {
       }
 
       if (decision.action === "confirm") {
-        await sendConfirmation(event, {
-          candidate: built.candidate,
-          command: built.command,
-          decision,
-          segment: this.segment,
-          config: config.reply,
+        const suggestions = commandSuggestions({
+          route,
+          context: queryContext,
+          text,
+          searchResults,
+          catalog: this.catalog,
+          primary: [
+            {
+              description: built.candidate.description,
+              command: built.command,
+            },
+          ],
+          includeLocalFallbacks: false,
         })
+        if (suggestions.length > 1) {
+          await sendClarification(event, {
+            message:
+              "我找到了几个相关功能，已经把直接操作排在前面，请选择你实际想用的一个。",
+            suggestions,
+            segment: this.segment,
+            config: config.reply,
+          })
+        } else {
+          await sendConfirmation(event, {
+            candidate: built.candidate,
+            command: built.command,
+            decision,
+            segment: this.segment,
+            config: config.reply,
+          })
+        }
         this.audit(event, {
           decision: "confirm",
           candidateId: built.candidate.id,
@@ -498,6 +534,7 @@ export class AiEnhanceService {
           confidence: route.confidence,
           retrievalScore: decision.selectedScore,
           retrievalMargin: decision.margin,
+          suggestionCount: suggestions.length,
         }, config)
         return true
       }
@@ -557,16 +594,16 @@ export class AiEnhanceService {
   }
 }
 
+export { fixedSuggestions, mergeSuggestions } from "../ui/suggestions.js"
+
 export {
   eventIdentity,
   identityHash,
   groupIsEnabled,
   shouldHandleEvent,
   extractText,
-  fixedSuggestions,
   contextualCharacterSuggestions,
   hasCharacterCommandIntent,
-  mergeSuggestions,
   modelClarification,
   decisionClarification,
   errorSummary,

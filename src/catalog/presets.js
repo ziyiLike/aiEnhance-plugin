@@ -1249,11 +1249,15 @@ const xiaoyao = [
     plugin: "xiaoyao",
     description: "查看米游社账号绑定与签到配置教程；不会提交凭据",
     command: "#米游社帮助",
-    intentExamples: ["原神米游社怎么绑定", "看看米游社签到教程"],
-    keywords: ["原神", "米游社", "账号", "绑定", "签到", "教程", "帮助"],
+    intentExamples: [
+      "原神米游社怎么绑定",
+      "米游社签到怎么配置",
+      "看看米游社签到教程",
+    ],
+    keywords: ["米游社", "账号", "绑定", "签到配置", "教程", "帮助", "Cookie"],
     runtimeAliases: ["xiaoyao-cvs-plugin", "图鉴插件"],
     runtimeRuleOptional: true,
-    games: ["genshin"],
+    games: ["genshin", "starrail", "zzz"],
   }),
   fixedCommand({
     id: "xiaoyao.qr_login",

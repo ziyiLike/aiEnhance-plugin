@@ -102,3 +102,23 @@ test("selectedRetrievalStats reports negative margin when model skips the top re
     { selectedScore: 0.4, margin: -0.5 },
   )
 })
+
+test("PolicyEngine asks the user when the model skips a stronger local candidate", () => {
+  const config = cloneDefaults()
+  const catalog = new CommandCatalog()
+  catalog.configure(DEFAULT_CONFIG.commands)
+  const selected = catalog.find("xiaoyao.account_help")
+  const top = catalog.find("xiaoyao.genshin_sign")
+  const decision = new PolicyEngine().decide({
+    route: { candidateId: selected.id, confidence: 0.99 },
+    candidate: selected,
+    searchResults: [
+      { candidate: top, score: 0.8 },
+      { candidate: selected, score: 0.5 },
+    ],
+    config,
+  })
+
+  assert.equal(decision.action, "clarify")
+  assert.equal(decision.reason, "candidate_ranked_below_alternative")
+})

@@ -70,7 +70,7 @@ export async function sendClarification(
   { message, suggestions = [], segment, config },
 ) {
   const text = String(message || "我还不确定你想使用哪个功能，请再具体一点。")
-  const buildable = suggestions.filter(item => item.command).slice(0, 3)
+  const buildable = suggestions.filter(item => item.command).slice(0, 5)
 
   if (!buildable.length || !canUseButtons(segment, config)) {
     const lines = buildable.map(item => `- ${item.description}：${item.command}`)

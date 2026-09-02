@@ -1,3 +1,34 @@
+const SIGN_CANDIDATES = {
+  genshin: "xiaoyao.genshin_sign",
+  starrail: "xiaoyao.starrail_sign",
+  zzz: "xiaoyao.zzz_sign",
+  waves: "waves.sign",
+}
+
+const SIGN_HELP_CANDIDATES = {
+  genshin: "xiaoyao.account_help",
+  starrail: "xiaoyao.account_help",
+  zzz: "xiaoyao.account_help",
+  waves: "waves.login_help",
+}
+
+function fixedCandidateSuggestion(candidateId, catalog) {
+  const candidate = catalog.find(candidateId)
+  if (
+    !candidate ||
+    ["sensitive", "admin"].includes(candidate.risk) ||
+    candidate.slots.some(slot => slot.required)
+  ) {
+    return null
+  }
+  const built = catalog.buildCommand(candidateId, [])
+  if (!built.ok) return null
+  return {
+    description: candidate.description,
+    command: built.command,
+  }
+}
+
 export function fixedSuggestions(searchResults, catalog) {
   const suggestions = []
   for (const result of searchResults) {
@@ -11,6 +42,70 @@ export function fixedSuggestions(searchResults, catalog) {
     })
   }
   return suggestions
+}
+
+export function modelAlternativeSuggestions(route, catalog) {
+  const alternatives = Array.isArray(route?.alternatives)
+    ? [...route.alternatives]
+    : []
+  alternatives.sort((left, right) => right.confidence - left.confidence)
+  return alternatives
+    .map(item => fixedCandidateSuggestion(item.candidateId, catalog))
+    .filter(Boolean)
+}
+
+export function contextualSignSuggestions(context, text, catalog) {
+  const query = String(text || "")
+  if (!/签到/.test(query)) return []
+  if (
+    /(?:签到.{0,4}(?:记录|历史|状态)|(?:记录|历史|状态).{0,4}签到|米游币)/.test(
+      query,
+    )
+  ) {
+    return []
+  }
+
+  const explicitGames = Array.isArray(context?.explicitGames)
+    ? context.explicitGames
+    : []
+  const inferredGames = Array.isArray(context?.inferredGames)
+    ? context.inferredGames
+    : []
+  const defaultGames = /(?:米游社|米哈游|米游币)/.test(query)
+    ? ["genshin", "starrail", "zzz"]
+    : Object.keys(SIGN_CANDIDATES)
+  const hintedGames = explicitGames.length
+    ? explicitGames
+    : inferredGames.length
+      ? inferredGames
+      : defaultGames
+  const games = [...new Set(hintedGames)].filter(game => SIGN_CANDIDATES[game])
+  const configurationIntent =
+    /(?:自动签到|签到.{0,6}(?:配置|教程|帮助|设置)|(?:配置|教程|帮助|设置).{0,6}签到|cookie|stoken)/i.test(
+      query,
+    )
+  const howToIntent =
+    /(?:(?:怎么|如何).{0,8}签到|签到.{0,8}(?:怎么|如何))/.test(query)
+  const suggestions = []
+
+  if (!configurationIntent) {
+    for (const game of games) {
+      const suggestion = fixedCandidateSuggestion(SIGN_CANDIDATES[game], catalog)
+      if (suggestion) suggestions.push(suggestion)
+    }
+  }
+
+  if (configurationIntent || howToIntent) {
+    for (const game of games) {
+      const suggestion = fixedCandidateSuggestion(
+        SIGN_HELP_CANDIDATES[game],
+        catalog,
+      )
+      if (suggestion) suggestions.push(suggestion)
+    }
+  }
+
+  return mergeSuggestions(suggestions)
 }
 
 export function contextualCharacterSuggestions(context, text, catalog) {
@@ -111,6 +206,35 @@ export function mergeSuggestions(...groups) {
   return result
 }
 
+export function commandSuggestions({
+  route,
+  context,
+  text,
+  searchResults,
+  catalog,
+  primary = [],
+  includeLocalFallbacks = true,
+}) {
+  const signSuggestions = contextualSignSuggestions(context, text, catalog)
+  const modelSuggestions = modelAlternativeSuggestions(route, catalog)
+
+  if (signSuggestions.length) {
+    return mergeSuggestions(signSuggestions, primary, modelSuggestions).slice(
+      0,
+      5,
+    )
+  }
+
+  return mergeSuggestions(
+    primary,
+    modelSuggestions,
+    includeLocalFallbacks
+      ? contextualCharacterSuggestions(context, text, catalog)
+      : [],
+    includeLocalFallbacks ? fixedSuggestions(searchResults, catalog) : [],
+  ).slice(0, 5)
+}
+
 export function modelClarification(route, buildError) {
   if (route.reply) return route.reply
   if (buildError) return `${buildError}。请补充更具体的信息。`
@@ -123,6 +247,9 @@ export function decisionClarification(decision, candidate) {
   }
   if (decision.reason === "query_character_ambiguous") {
     return "这个角色名在多个游戏中都存在，请补充原神、鸣潮、星铁或绝区零。"
+  }
+  if (decision.reason === "candidate_ranked_below_alternative") {
+    return "我找到了几个相近的功能，已经把直接操作排在前面，请选择你实际想用的一个。"
   }
   return `我还不完全确定。你是想执行「${candidate.description}」吗？`
 }
